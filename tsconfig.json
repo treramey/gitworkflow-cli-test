@@ -1,0 +1,3 @@
+{
+  "extends": "@gitworkflow-ci-test/config/tsconfig.base.json"
+}
