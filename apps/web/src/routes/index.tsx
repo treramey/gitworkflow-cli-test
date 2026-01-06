@@ -35,6 +35,10 @@ function HomeComponent() {
           <h2 className="mb-2 font-medium">Feature To Close</h2>
           <p className="text-muted-foreground text-sm">This feature should be REMOVED from dev</p>
         </section>
+        <section className="rounded-lg border p-4">
+          <h2 className="mb-2 font-medium">Feature To Keep</h2>
+          <p className="text-muted-foreground text-sm">This feature should stay in dev</p>
+        </section>
       </div>
     </div>
   );
