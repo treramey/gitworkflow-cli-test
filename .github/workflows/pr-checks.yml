@@ -16,12 +16,12 @@ env:
   CI: true
 
 jobs:
-  ci:
-    name: CI
+  build:
+    name: build
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
     outputs:
-      ci_passed: ${{ steps.ci_result.outputs.passed }}
+      passed: ${{ steps.result.outputs.passed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,8 +40,8 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Set CI result
-        id: ci_result
+      - name: Set result
+        id: result
         if: success()
         run: echo "passed=true" >> $GITHUB_OUTPUT
 
@@ -102,23 +102,23 @@ jobs:
   #         ---
   #         *Automated review by Claude*"
 
-  gate-check:
-    name: Gate Check
+  pr-labels:
+    name: pr-labels
     runs-on: ubuntu-latest
-    needs: [ci]
+    needs: [build]
     if: always()
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
-      - name: Check CI status
-        id: ci_status
+      - name: Check build status
+        id: build_status
         run: |
-          if [ "${{ needs.ci.outputs.ci_passed }}" == "true" ]; then
-            echo "ci_passed=true" >> $GITHUB_OUTPUT
+          if [ "${{ needs.build.outputs.passed }}" == "true" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
           else
-            echo "ci_passed=false" >> $GITHUB_OUTPUT
+            echo "passed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Check review status
@@ -134,8 +134,8 @@ jobs:
 
       - name: Update labels
         run: |
-          # CI labels
-          if [ "${{ steps.ci_status.outputs.ci_passed }}" == "true" ]; then
+          # Build labels
+          if [ "${{ steps.build_status.outputs.passed }}" == "true" ]; then
             gh pr edit $PR_NUMBER --repo $REPO --remove-label "ci-failed" 2>/dev/null || true
             gh pr edit $PR_NUMBER --repo $REPO --add-label "ci-passed"
             gh pr edit $PR_NUMBER --repo $REPO --remove-label "has-conflict" 2>/dev/null || true
@@ -151,10 +151,63 @@ jobs:
             gh pr edit $PR_NUMBER --repo $REPO --remove-label "needs-review" 2>/dev/null || true
           fi
 
-          # Ready for integration (all gates pass)
-          if [ "${{ steps.ci_status.outputs.ci_passed }}" == "true" ] && [ "${{ steps.review_status.outputs.approved }}" == "true" ]; then
+          # Ready for integration (build + approval)
+          if [ "${{ steps.build_status.outputs.passed }}" == "true" ] && [ "${{ steps.review_status.outputs.approved }}" == "true" ]; then
             gh pr edit $PR_NUMBER --repo $REPO --add-label "ready-for-integration"
             gh pr edit $PR_NUMBER --repo $REPO --remove-label "needs-review" 2>/dev/null || true
           else
             echo "Not all gates passed yet"
           fi
+
+      - name: Check staging status
+        id: staging_status
+        run: |
+          labels=$(gh api repos/$REPO/pulls/$PR_NUMBER --jq '.labels[].name')
+          if echo "$labels" | grep -q "^in-staging$"; then
+            echo "in_staging=true" >> $GITHUB_OUTPUT
+          else
+            echo "in_staging=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update release approval
+        id: release_status
+        run: |
+          # Approved for release (build + approval + in-staging)
+          if [ "${{ steps.build_status.outputs.passed }}" == "true" ] && \
+             [ "${{ steps.review_status.outputs.approved }}" == "true" ] && \
+             [ "${{ steps.staging_status.outputs.in_staging }}" == "true" ]; then
+            gh pr edit $PR_NUMBER --repo $REPO --add-label "approved-for-release"
+            echo "approved=true" >> $GITHUB_OUTPUT
+            echo "All gates passed - approved for release"
+          else
+            gh pr edit $PR_NUMBER --repo $REPO --remove-label "approved-for-release" 2>/dev/null || true
+            echo "approved=false" >> $GITHUB_OUTPUT
+            echo "Not ready for release: build=${{ steps.build_status.outputs.passed }} approved=${{ steps.review_status.outputs.approved }} in_staging=${{ steps.staging_status.outputs.in_staging }}"
+          fi
+
+    outputs:
+      release_approved: ${{ steps.release_status.outputs.approved }}
+
+  require-staging-approval:
+    name: require-staging-approval
+    runs-on: ubuntu-latest
+    needs: [pr-labels]
+    if: always()
+    steps:
+      - name: Check release approval
+        run: |
+          if [ "${{ needs.pr-labels.outputs.release_approved }}" != "true" ]; then
+            echo "::error::PR not approved for release. Required: build passed + code review approval + in-staging label"
+            echo ""
+            echo "Flow to merge:"
+            echo "  1. Build must pass (type-check + build)"
+            echo "  2. Get code review approval"
+            echo "  3. Wait for 'ready-for-integration' label (auto-added)"
+            echo "  4. Topic merges to dev on next rebuild"
+            echo "  5. Release manager promotes to staging"
+            echo "  6. 'in-staging' label added"
+            echo "  7. 'approved-for-release' label auto-added"
+            echo "  8. Merge allowed"
+            exit 1
+          fi
+          echo "PR approved for release - merge allowed"
