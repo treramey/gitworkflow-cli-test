@@ -1,0 +1,293 @@
+name: Release
+
+on:
+  pull_request:
+    branches: [master]
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  GIT_AUTHOR_NAME: github-actions[bot]
+  GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
+  GIT_COMMITTER_NAME: github-actions[bot]
+  GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "$GIT_AUTHOR_NAME"
+          git config user.email "$GIT_AUTHOR_EMAIL"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Check and merge maint
+        run: |
+          git fetch origin maint master
+
+          # Check if maint has commits not in master
+          maint_commits=$(git log origin/master..origin/maint --oneline)
+          if [ -n "$maint_commits" ]; then
+            echo "Merging maint into master..."
+            git checkout master
+            git merge origin/maint -m "Merge branch 'maint' into master"
+            git push origin master
+          else
+            echo "maint is up to date with master"
+          fi
+
+      - name: Determine version bump
+        id: bump_type
+        run: |
+          # Get commits since last tag
+          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -n "$last_tag" ]; then
+            commits=$(git log $last_tag..HEAD --pretty=format:'%s')
+          else
+            commits=$(git log --pretty=format:'%s')
+          fi
+
+          # Determine bump type from conventional commits
+          if echo "$commits" | grep -qE '^(feat|feature)!:|^.*!:'; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$commits" | grep -qE '^feat(\(.*\))?:'; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          else
+            echo "type=patch" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump version
+        id: bump
+        run: |
+          # Get current version from package.json or use 0.0.0
+          current=$(jq -r '.version // "0.0.0"' package.json)
+
+          # Parse version
+          IFS='.' read -r major minor patch <<< "$current"
+
+          # Bump based on type
+          case "${{ steps.bump_type.outputs.type }}" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+          esac
+
+          new_version="$major.$minor.$patch"
+          echo "version=$new_version" >> $GITHUB_OUTPUT
+          echo "tag=v$new_version" >> $GITHUB_OUTPUT
+
+          # Update package.json
+          jq ".version = \"$new_version\"" package.json > package.json.tmp
+          mv package.json.tmp package.json
+
+          echo "Bumped version: $current -> $new_version"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          changelog=""
+
+          # Features
+          if [ -n "$last_tag" ]; then
+            features=$(git log $last_tag..HEAD --pretty=format:'- %s (%h)' --grep='^feat' | head -20)
+            fixes=$(git log $last_tag..HEAD --pretty=format:'- %s (%h)' --grep='^fix' | head -20)
+          else
+            features=$(git log --pretty=format:'- %s (%h)' --grep='^feat' | head -20)
+            fixes=$(git log --pretty=format:'- %s (%h)' --grep='^fix' | head -20)
+          fi
+
+          if [ -n "$features" ]; then
+            changelog="$changelog## Features\n\n$features\n\n"
+          fi
+
+          if [ -n "$fixes" ]; then
+            changelog="$changelog## Bug Fixes\n\n$fixes\n\n"
+          fi
+
+          # Merged topics
+          if [ -n "$last_tag" ]; then
+            topics=$(git log $last_tag..HEAD --merges --first-parent --pretty=format:'%s' | \
+              grep -oE "Merge branch '[^']+" | sed "s/Merge branch '/- /g" | head -20 || true)
+          else
+            topics=$(git log --merges --first-parent --pretty=format:'%s' | \
+              grep -oE "Merge branch '[^']+" | sed "s/Merge branch '/- /g" | head -20 || true)
+          fi
+
+          if [ -n "$topics" ]; then
+            changelog="$changelog## Merged Topics\n\n$topics\n\n"
+          fi
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$changelog" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
+        run: |
+          git add package.json
+          git commit -m "chore: release v${{ steps.bump.outputs.version }}"
+          git tag -a "${{ steps.bump.outputs.tag }}" -m "Release ${{ steps.bump.outputs.version }}"
+
+      - name: Archive maint and update
+        run: |
+          # Archive current maint (optional)
+          timestamp=$(date +%Y%m%d)
+          git branch -m origin/maint archive/maint-$timestamp 2>/dev/null || true
+
+          # Update maint to match master
+          git push origin master:maint --force
+
+      - name: Push master with tags
+        run: |
+          git push origin master --follow-tags
+
+      - name: Rebuild staging (remove graduated topics)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch origin staging
+
+          # Get topics in staging
+          topics=$(git log origin/master..origin/staging --merges --first-parent --pretty=format:'%s' | \
+            grep -oE "Merge branch '[^']+" | sed "s/Merge branch '//g" | sort -u || true)
+
+          # Reset staging to master
+          git checkout -B staging origin/master
+
+          # Re-merge non-graduated topics
+          for topic in $topics; do
+            if [ -z "$topic" ]; then continue; fi
+            if git rev-parse --verify "origin/$topic" &>/dev/null; then
+              if ! git merge-base --is-ancestor "origin/$topic" origin/master 2>/dev/null; then
+                echo "Re-merging: $topic"
+                git merge --no-ff --no-edit "origin/$topic" -m "Merge branch '$topic' into staging" || git merge --abort
+              else
+                echo "Graduated: $topic (removing from staging)"
+                # Update PR label
+                pr_number=$(gh pr list --head "$topic" --state merged --json number --jq '.[0].number' 2>/dev/null || echo "")
+                if [ -n "$pr_number" ]; then
+                  gh pr edit "$pr_number" --remove-label "in-staging" 2>/dev/null || true
+                fi
+              fi
+            fi
+          done
+
+          git push origin staging --force-with-lease
+
+      - name: Rebuild dev (remove graduated topics)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch origin dev
+
+          # Get labeled topics (still open)
+          labeled_topics=$(gh pr list --label "ready-for-integration" --json headRefName --jq '.[].headRefName' | sort -u || true)
+
+          # Reset dev to master
+          git checkout -B dev origin/master
+
+          # Phase 1: Re-merge topics from staging
+          staging_topics=$(git log origin/master..origin/staging --merges --first-parent --pretty=format:'%s' | \
+            grep -oE "Merge branch '[^']+" | sed "s/Merge branch '//g" | sort -u || true)
+
+          for topic in $staging_topics; do
+            if [ -z "$topic" ]; then continue; fi
+            if git rev-parse --verify "origin/$topic" &>/dev/null; then
+              if ! git merge-base --is-ancestor "origin/$topic" origin/master 2>/dev/null; then
+                echo "Merging (staging): $topic"
+                git merge --no-ff --no-edit "origin/$topic" -m "Merge branch '$topic' into dev" || git merge --abort
+              fi
+            fi
+          done
+
+          git commit --allow-empty -m "### Match 'staging'" || true
+
+          # Phase 2: Merge remaining labeled topics
+          for topic in $labeled_topics; do
+            if [ -z "$topic" ]; then continue; fi
+            if git rev-parse --verify "origin/$topic" &>/dev/null; then
+              if ! git merge-base --is-ancestor "origin/$topic" HEAD 2>/dev/null; then
+                if ! git merge-base --is-ancestor "origin/$topic" origin/master 2>/dev/null; then
+                  echo "Merging (labeled): $topic"
+                  git merge --no-ff --no-edit "origin/$topic" -m "Merge branch '$topic' into dev" || git merge --abort
+                fi
+              fi
+            fi
+          done
+
+          git push origin dev --force-with-lease
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.bump.outputs.tag }}" \
+            --title "Release ${{ steps.bump.outputs.version }}" \
+            --notes "${{ steps.changelog.outputs.changelog }}"
+
+  deploy-production:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    needs: release
+    environment:
+      name: production
+      url: https://yourapp.com
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Deploy to Production
+        run: |
+          echo "Deploying v${{ needs.release.outputs.version }} to Production..."
+          # Add your deployment commands here
+          echo "Deployment placeholder - configure your deployment method"
+
+      - name: Post-deployment notification
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Release ${{ needs.release.outputs.version }} deployed to production"
+          # Add Slack/Discord notification here if needed

@@ -1,0 +1,187 @@
+# =============================================================================
+# Gitworkflow Aliases for This Project
+# =============================================================================
+# Add to your ~/.gitconfig:
+#   [include]
+#     path = /path/to/this/repo/.gitconfig
+#
+# Or copy the [alias] section to your existing ~/.gitconfig
+#
+# Integration branches:
+#   master  - stable releases (production)
+#   maint   - maintenance/hotfixes
+#   staging - beta/stabilization
+#   dev     - proposed updates (alpha)
+# =============================================================================
+
+[alias]
+    # =========================================================================
+    # LOG & VISUALIZATION
+    # =========================================================================
+
+    # Pretty log with graph
+    lg = log --graph --abbrev-commit --decorate --format=format:'%C(yellow)%h%C(reset) %C(normal)%s%C(reset) %C(dim white)%an%C(reset) %C(dim blue)(%ar)%C(reset) %C(dim black)%d%C(reset)'
+
+    # Same with --first-parent (great for integration branch history)
+    lgp = log --graph --abbrev-commit --decorate --format=format:'%C(yellow)%h%C(reset) %C(normal)%s%C(reset) %C(dim white)%an%C(reset) %C(dim blue)(%ar)%C(reset) %C(dim black)%d%C(reset)' --first-parent
+
+    # =========================================================================
+    # TOPIC MANAGEMENT
+    # =========================================================================
+
+    # List all topic branches (matches: initials/description format)
+    topics = "!f() { \
+        git branch --sort=committerdate -r | \
+        sed -e 's|remotes/||g' -e 's|origin/||g' | \
+        grep -E \"^[a-z]{1,3}/.*\" | \
+        cut -c3- | \
+        grep -vE '^(archive|backup|wip)/' | \
+        uniq | grep -v HEAD; \
+    }; f"
+
+    # Oldest ancestor between integration branch and topic
+    oldest-ancestor = !bash -c 'diff --old-line-format= --new-line-format= <(git rev-list --first-parent \"${1:-master}\") <(git rev-list --first-parent \"${2:-HEAD}\") | head -1' -
+
+    # Topic log/diff relative to master
+    topiclg = !sh -c \"git lg $(git oldest-ancestor origin/$(echo $1 | sed -e 's|origin/||g') ${2:-master})..origin/$(echo $1 | sed -e 's|origin/||g')\" -
+    topicdiff = !sh -c \"git diff $(git oldest-ancestor origin/$(echo $1 | sed -e 's|origin/||g') ${2:-master})..origin/$(echo $1 | sed -e 's|origin/||g')\" -
+    topicstat = !sh -c \"git --no-pager diff --stat $(git oldest-ancestor origin/$(echo $1 | sed -e 's|origin/||g') ${2:-master})..origin/$(echo $1 | sed -e 's|origin/||g')\" -
+
+    # =========================================================================
+    # TOPIC STATUS
+    # =========================================================================
+    # Legend: = master | * maint | + staging | - dev | . none
+
+    where = "!bash -c '\
+        while read topic; do \
+            contains=$(git branch -r --contains origin/$topic 2>/dev/null); \
+            if grep -q origin/maint <<<\"$contains\"; then symbol=\"*\"; \
+            elif grep -q origin/master <<<\"$contains\"; then symbol=\"=\"; \
+            elif grep -q origin/staging <<<\"$contains\"; then symbol=\"+\"; \
+            elif grep -q origin/dev <<<\"$contains\"; then symbol=\"-\"; \
+            else symbol=\".\"; fi; \
+            echo \"$symbol $topic\"; \
+        done < <(git topics)'"
+
+    # Topics ready to graduate (in staging but not master)
+    ready-to-graduate = "!git log origin/master..origin/staging --merges --first-parent --pretty=format:'%s' | grep -oE \"Merge branch '[^']+\" | sed \"s/Merge branch '//g\" | sort -u"
+
+    # Topics in dev but not staging
+    in-dev-only = "!git log origin/staging..origin/dev --merges --first-parent --pretty=format:'%s' | grep -oE \"Merge branch '[^']+\" | sed \"s/Merge branch '//g\" | sort -u"
+
+    # Topics not yet in any integration branch
+    orphan-topics = "!bash -c '\
+        while read topic; do \
+            contains=$(git branch -r --contains origin/$topic 2>/dev/null); \
+            if ! grep -qE \"origin/(master|maint|staging|dev)\" <<<\"$contains\"; then \
+                echo \"$topic\"; \
+            fi; \
+        done < <(git topics)'"
+
+    # =========================================================================
+    # RELEASE MANAGEMENT
+    # =========================================================================
+
+    # Check if maint needs to be merged to master before release
+    maint-status = "!f() { \
+        commits=$(git log origin/master..origin/maint --oneline 2>/dev/null); \
+        if [ -n \"$commits\" ]; then \
+            echo \"maint has commits not in master:\"; \
+            echo \"$commits\"; \
+            echo \"\"; \
+            echo \"Run: git checkout master && git merge maint\"; \
+        else \
+            echo \"maint is up to date with master\"; \
+        fi; \
+    }; f"
+
+    # Pre-release checklist
+    release-check = "!f() { \
+        echo \"=== Release Checklist ===\"; \
+        echo \"\"; \
+        echo \"1. Maint status:\"; \
+        git maint-status; \
+        echo \"\"; \
+        echo \"2. Topics ready to graduate:\"; \
+        git ready-to-graduate || echo \"   (none)\"; \
+        echo \"\"; \
+        echo \"3. Current version:\"; \
+        git describe --tags --abbrev=0 2>/dev/null || echo \"   (no tags)\"; \
+        echo \"\"; \
+        echo \"4. Commits since last tag:\"; \
+        lasttag=$(git describe --tags --abbrev=0 2>/dev/null); \
+        if [ -n \"$lasttag\" ]; then \
+            git log $lasttag..HEAD --oneline | wc -l | xargs echo \"  \"; \
+        else \
+            echo \"   N/A\"; \
+        fi; \
+    }; f"
+
+    # =========================================================================
+    # LOCAL REBUILDING (for testing)
+    # =========================================================================
+
+    # Rebuild dev from master locally
+    rebuild-dev = "!f() { \
+        echo \"Rebuilding dev...\"; \
+        git fetch origin; \
+        git checkout -B dev origin/master; \
+        echo \"Phase 1: Topics from staging\"; \
+        for topic in $(git log origin/master..origin/staging --merges --first-parent --pretty=format:'%s' | grep -oE \"Merge branch '[^']+\" | sed \"s/Merge branch '//g;s/'.*//g\" | sort -u); do \
+            if git rev-parse --verify origin/$topic &>/dev/null; then \
+                if ! git merge-base --is-ancestor origin/$topic origin/master 2>/dev/null; then \
+                    echo \"  Merging: $topic\"; \
+                    git merge --no-ff --no-edit origin/$topic -m \"Merge branch '$topic' into dev\" || git merge --abort; \
+                fi; \
+            fi; \
+        done; \
+        git commit --allow-empty -m \"### Match 'staging'\" 2>/dev/null || true; \
+        echo \"Done. Run 'git push origin dev --force-with-lease' to publish.\"; \
+    }; f"
+
+    # Rebuild staging from master locally
+    rebuild-staging = "!f() { \
+        echo \"Rebuilding staging...\"; \
+        git fetch origin; \
+        topics=$(git log origin/master..origin/staging --merges --first-parent --pretty=format:'%s' | grep -oE \"Merge branch '[^']+\" | sed \"s/Merge branch '//g;s/'.*//g\" | sort -u); \
+        git checkout -B staging origin/master; \
+        for topic in $topics; do \
+            if git rev-parse --verify origin/$topic &>/dev/null; then \
+                if ! git merge-base --is-ancestor origin/$topic origin/master 2>/dev/null; then \
+                    echo \"  Merging: $topic\"; \
+                    git merge --no-ff --no-edit origin/$topic -m \"Merge branch '$topic' into staging\" || git merge --abort; \
+                fi; \
+            fi; \
+        done; \
+        echo \"Done. Run 'git push origin staging --force-with-lease' to publish.\"; \
+    }; f"
+
+    # =========================================================================
+    # MERGING
+    # =========================================================================
+
+    m = merge --no-ff
+
+    # Merge remote branch with clean message
+    mb = "!f() { : git merge; \
+        branch=\"$1\"; \
+        if [[ $branch != origin/* ]]; then branch=\"origin/$branch\"; fi; \
+        git merge --no-ff $branch -m \"Merge branch '$(echo $1 | sed -e 's|origin/||g')' into $(git symbolic-ref HEAD | sed -e 's|refs/heads/||g')\"; \
+    }; f"
+
+    # =========================================================================
+    # UTILITIES
+    # =========================================================================
+
+    # Branches not merged to a target
+    tomerge = !sh -c 'git branch -r --no-merged ${2:-HEAD} | grep -Ev "HEAD" | grep -Ev \"(\\*|master|maint|staging|dev)\" | grep ${1:-.}' -
+
+    # Fast-forward current branch from origin
+    ff = !sh -c 'branch=$(git symbolic-ref HEAD | cut -d \"/\" -f 3-) && git merge --ff-only origin/$branch' -
+
+    # Fetch all with prune
+    fap = fetch --all -p -t
+
+[rerere]
+    # Remember conflict resolutions (essential for gitworkflow)
+    enabled = true

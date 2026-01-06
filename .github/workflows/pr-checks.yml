@@ -1,0 +1,165 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+env:
+  CI: true
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    outputs:
+      ci_passed: ${{ steps.ci_result.outputs.passed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        run: bun run check-types
+
+      - name: Build
+        run: bun run build
+
+      - name: Set CI result
+        id: ci_result
+        if: success()
+        run: echo "passed=true" >> $GITHUB_OUTPUT
+
+  # AI Review job commented out - uncomment and add ANTHROPIC_API_KEY secret to enable
+  # ai-review:
+  #   name: AI Review
+  #   runs-on: ubuntu-latest
+  #   if: |
+  #     github.event_name == 'pull_request' &&
+  #     github.event.action != 'ready_for_review' &&
+  #     github.event.pull_request.draft == false
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #     - name: Get changed files
+  #       id: changed
+  #       run: |
+  #         files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | head -50)
+  #         echo "files<<EOF" >> $GITHUB_OUTPUT
+  #         echo "$files" >> $GITHUB_OUTPUT
+  #         echo "EOF" >> $GITHUB_OUTPUT
+  #     - name: Get diff
+  #       id: diff
+  #       run: |
+  #         diff=$(git diff origin/${{ github.base_ref }}...HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' | head -500)
+  #         echo "diff<<EOF" >> $GITHUB_OUTPUT
+  #         echo "$diff" >> $GITHUB_OUTPUT
+  #         echo "EOF" >> $GITHUB_OUTPUT
+  #     - name: AI Code Review
+  #       if: env.ANTHROPIC_API_KEY != ''
+  #       env:
+  #         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       run: |
+  #         if [ -z "${{ steps.diff.outputs.diff }}" ]; then
+  #           echo "No code changes to review"
+  #           exit 0
+  #         fi
+  #         response=$(curl -s https://api.anthropic.com/v1/messages \
+  #           -H "Content-Type: application/json" \
+  #           -H "x-api-key: $ANTHROPIC_API_KEY" \
+  #           -H "anthropic-version: 2023-06-01" \
+  #           -d '{
+  #             "model": "claude-sonnet-4-20250514",
+  #             "max_tokens": 1024,
+  #             "messages": [{
+  #               "role": "user",
+  #               "content": "Review this code diff. Focus on bugs, security, major improvements. Be brief.\n\nFiles:\n${{ steps.changed.outputs.files }}\n\nDiff:\n${{ steps.diff.outputs.diff }}"
+  #             }]
+  #           }')
+  #         review=$(echo "$response" | jq -r '.content[0].text // "Unable to generate review"')
+  #         gh pr comment ${{ github.event.pull_request.number }} --body "## AI Code Review
+  #
+  #         $review
+  #
+  #         ---
+  #         *Automated review by Claude*"
+
+  gate-check:
+    name: Gate Check
+    runs-on: ubuntu-latest
+    needs: [ci]
+    if: always()
+    steps:
+      - name: Check CI status
+        id: ci_status
+        run: |
+          if [ "${{ needs.ci.outputs.ci_passed }}" == "true" ]; then
+            echo "ci_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "ci_passed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check review status
+        id: review_status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          reviews=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews)
+          approved=$(echo "$reviews" | jq '[.[] | select(.state == "APPROVED")] | length')
+          if [ "$approved" -gt 0 ]; then
+            echo "approved=true" >> $GITHUB_OUTPUT
+          else
+            echo "approved=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+
+          # CI labels
+          if [ "${{ steps.ci_status.outputs.ci_passed }}" == "true" ]; then
+            gh pr edit $PR_NUMBER --remove-label "ci-failed" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --add-label "ci-passed"
+
+            # Remove has-conflict if CI passes (conflict was resolved)
+            gh pr edit $PR_NUMBER --remove-label "has-conflict" 2>/dev/null || true
+          else
+            gh pr edit $PR_NUMBER --remove-label "ci-passed" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --add-label "ci-failed"
+          fi
+
+          # Review labels
+          if [ "${{ steps.review_status.outputs.approved }}" != "true" ]; then
+            gh pr edit $PR_NUMBER --add-label "needs-review" 2>/dev/null || true
+          else
+            gh pr edit $PR_NUMBER --remove-label "needs-review" 2>/dev/null || true
+          fi
+
+          # Ready for integration (all gates pass)
+          if [ "${{ steps.ci_status.outputs.ci_passed }}" == "true" ] && [ "${{ steps.review_status.outputs.approved }}" == "true" ]; then
+            gh pr edit $PR_NUMBER --add-label "ready-for-integration"
+            gh pr edit $PR_NUMBER --remove-label "needs-review" 2>/dev/null || true
+          else
+            # Don't remove ready-for-integration if already set (allows manual override)
+            echo "Not all gates passed yet"
+          fi
