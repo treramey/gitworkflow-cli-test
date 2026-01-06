@@ -32,5 +32,6 @@
     "turbo": "^2.6.3",
     "typescript": "catalog:"
   },
-  "packageManager": "bun@1.3.5"
+  "packageManager": "bun@1.3.5",
+  "version": "0.1.0"
 }
