@@ -31,6 +31,10 @@ function HomeComponent() {
             Final E2E test - full release flow
           </p>
         </section>
+        <section className="rounded-lg border border-red-500 p-4">
+          <h2 className="mb-2 font-medium">Feature To Close</h2>
+          <p className="text-muted-foreground text-sm">This feature should be REMOVED from dev</p>
+        </section>
       </div>
     </div>
   );
