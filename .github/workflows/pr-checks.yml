@@ -3,7 +3,7 @@ name: PR Checks
 on:
   pull_request:
     branches: [master]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   pull_request_review:
     types: [submitted]
 
@@ -19,7 +19,9 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.action != 'labeled'
     outputs:
       passed: ${{ steps.result.outputs.passed }}
     steps:
@@ -114,9 +116,20 @@ jobs:
     steps:
       - name: Check build status
         id: build_status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # If build ran this workflow, use its output
           if [ "${{ needs.build.outputs.passed }}" == "true" ]; then
             echo "passed=true" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.build.result }}" == "skipped" ]; then
+            # Build skipped (label event) - check if ci-passed label exists
+            labels=$(gh api repos/$REPO/pulls/$PR_NUMBER --jq '.labels[].name')
+            if echo "$labels" | grep -q "^ci-passed$"; then
+              echo "passed=true" >> $GITHUB_OUTPUT
+            else
+              echo "passed=false" >> $GITHUB_OUTPUT
+            fi
           else
             echo "passed=false" >> $GITHUB_OUTPUT
           fi
