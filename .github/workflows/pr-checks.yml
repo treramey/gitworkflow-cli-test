@@ -107,6 +107,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ci]
     if: always()
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
       - name: Check CI status
         id: ci_status
@@ -119,10 +123,8 @@ jobs:
 
       - name: Check review status
         id: review_status
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          reviews=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews)
+          reviews=$(gh api repos/$REPO/pulls/$PR_NUMBER/reviews)
           approved=$(echo "$reviews" | jq '[.[] | select(.state == "APPROVED")] | length')
           if [ "$approved" -gt 0 ]; then
             echo "approved=true" >> $GITHUB_OUTPUT
@@ -131,35 +133,28 @@ jobs:
           fi
 
       - name: Update labels
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-
           # CI labels
           if [ "${{ steps.ci_status.outputs.ci_passed }}" == "true" ]; then
-            gh pr edit $PR_NUMBER --remove-label "ci-failed" 2>/dev/null || true
-            gh pr edit $PR_NUMBER --add-label "ci-passed"
-
-            # Remove has-conflict if CI passes (conflict was resolved)
-            gh pr edit $PR_NUMBER --remove-label "has-conflict" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --repo $REPO --remove-label "ci-failed" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --repo $REPO --add-label "ci-passed"
+            gh pr edit $PR_NUMBER --repo $REPO --remove-label "has-conflict" 2>/dev/null || true
           else
-            gh pr edit $PR_NUMBER --remove-label "ci-passed" 2>/dev/null || true
-            gh pr edit $PR_NUMBER --add-label "ci-failed"
+            gh pr edit $PR_NUMBER --repo $REPO --remove-label "ci-passed" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --repo $REPO --add-label "ci-failed"
           fi
 
           # Review labels
           if [ "${{ steps.review_status.outputs.approved }}" != "true" ]; then
-            gh pr edit $PR_NUMBER --add-label "needs-review" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --repo $REPO --add-label "needs-review" 2>/dev/null || true
           else
-            gh pr edit $PR_NUMBER --remove-label "needs-review" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --repo $REPO --remove-label "needs-review" 2>/dev/null || true
           fi
 
           # Ready for integration (all gates pass)
           if [ "${{ steps.ci_status.outputs.ci_passed }}" == "true" ] && [ "${{ steps.review_status.outputs.approved }}" == "true" ]; then
-            gh pr edit $PR_NUMBER --add-label "ready-for-integration"
-            gh pr edit $PR_NUMBER --remove-label "needs-review" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --repo $REPO --add-label "ready-for-integration"
+            gh pr edit $PR_NUMBER --repo $REPO --remove-label "needs-review" 2>/dev/null || true
           else
-            # Don't remove ready-for-integration if already set (allows manual override)
             echo "Not all gates passed yet"
           fi
