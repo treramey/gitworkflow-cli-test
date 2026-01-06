@@ -206,10 +206,16 @@ jobs:
     runs-on: ubuntu-latest
     needs: [pr-labels]
     if: always()
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
       - name: Check release approval
         run: |
-          if [ "${{ needs.pr-labels.outputs.release_approved }}" != "true" ]; then
+          # Check if approved-for-release label exists (set by pr-labels or manually)
+          labels=$(gh api repos/$REPO/pulls/$PR_NUMBER --jq '.labels[].name')
+          if ! echo "$labels" | grep -q "^approved-for-release$"; then
             echo "::error::PR not approved for release. Required: build passed + code review approval + in-staging label"
             echo ""
             echo "Flow to merge:"
