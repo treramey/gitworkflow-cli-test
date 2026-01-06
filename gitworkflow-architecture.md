@@ -104,8 +104,8 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 │  label           │        │                  │        │                  │
 │                  │        │                  │        │                  │
 │  Rebuilt:        │        │  Rebuilt:        │        │  Never           │
-│  Every 4 hours   │        │  After releases  │        │  rebased         │
-│  (or on-demand)  │        │  (or on-demand)  │        │                  │
+│  On label add +  │        │  After releases  │        │  rebased         │
+│  every 2 hours   │        │  (or on-demand)  │        │                  │
 │                  │        │                  │        │                  │
 │  Audience:       │        │  Audience:       │        │  Audience:       │
 │  - Developers    │        │  - QA team       │        │  - Customers     │
@@ -195,8 +195,32 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   └── workflows/
       ├── pr-checks.yml              # CI + AI Review + Label management
       ├── rebuild-and-deploy.yml     # Rebuild dev/staging + deploy to servers
-      ├── promote-to-staging.yml        # Release manager promotes topic
+      ├── promote-to-staging.yml     # Release manager promotes topic
       └── release.yml                # Triggered on PR merge to master
+
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         REBUILD TRIGGERS                                        │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+  The `rebuild-and-deploy.yml` workflow triggers on:
+
+  1. **Label Event** (instant): When a user manually adds the `ready-for-integration`
+     label to a PR, the workflow triggers immediately.
+     
+     Note: Labels added by workflows (e.g., pr-checks adding the label after
+     approval) do NOT trigger the rebuild - this is a GitHub limitation.
+     For these cases, use manual trigger or wait for the scheduled run.
+
+  2. **Schedule** (every 2 hours): Safety net to catch any missed events,
+     conflict re-checks, and workflow-added labels.
+
+  3. **Manual** (workflow_dispatch): On-demand via GitHub Actions UI or `gh` CLI.
+
+  Concurrency:
+  - Uses `concurrency: { group: rebuild-dev, cancel-in-progress: false }`
+  - Multiple triggers queue up rather than cancelling each other
+  - Ensures all labeled PRs get processed
 
 
 ┌─────────────────────────────────────────────────────────────────────────────────┐
