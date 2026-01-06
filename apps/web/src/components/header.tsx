@@ -15,7 +15,9 @@ export default function Header() {
             );
           })}
         </nav>
-        <div className="flex items-center gap-2"></div>
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground text-xs">Fast Track Feature</span>
+        </div>
       </div>
       <hr />
     </div>
