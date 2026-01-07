@@ -193,7 +193,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   └── workflows/
       ├── pr-checks.yml              # CI + AI Review + Label management
       ├── rebuild-and-deploy.yml     # Rebuild dev/staging + deploy to servers
-      ├── promote-to-staging.yml     # Release manager promotes topic
+      ├── hotfix.yml                 # Hotfix release + merge maint → master
       └── release.yml                # Triggered on PR merge to master
 
 
