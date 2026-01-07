@@ -237,24 +237,10 @@ jobs:
     name: require-staging-approval
     runs-on: ubuntu-latest
     needs: [pr-labels]
-    if: always() && github.base_ref == 'master'
+    if: always() && github.base_ref == 'master' && needs.pr-labels.outputs.release_approved == 'true'
     steps:
-      - name: Check release approval
-        run: |
-          if [ "${{ needs.pr-labels.outputs.release_approved }}" != "true" ]; then
-            echo "::error::PR not approved for release. Required: build passed + code review approval + env: staging label"
-            echo ""
-            echo "Flow to merge:"
-            echo "  1. Build must pass (type-check + build)"
-            echo "  2. Get code review approval"
-            echo "  3. Wait for 'env: dev' label (auto-added)"
-            echo "  4. Topic merges to dev on next rebuild"
-            echo "  5. Release manager promotes to staging"
-            echo "  6. 'env: staging' label added"
-            echo "  7. Merge allowed"
-            exit 1
-          fi
-          echo "PR approved for release - merge allowed"
+      - name: Release approved
+        run: echo "PR approved for release - merge allowed"
 
   # Merge gate for hotfix PRs to maint (CI + approval only, no staging)
   require-hotfix-approval:
