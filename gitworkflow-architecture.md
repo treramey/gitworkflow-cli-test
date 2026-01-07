@@ -67,8 +67,8 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 │                    │  ALL GATES PASS       │                                   │
 │                    │                       │                                   │
 │                    │  Label added:         │                                   │
-│                    │  "ready-for-          │                                   │
-│                    │   integration"        │                                   │
+│                    │  "status: ready"      │                                   │
+│                    │                       │                                   │
 │                    └───────────────────────┘                                   │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                        │
@@ -99,9 +99,9 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 │                  │        │                  │        │                  │
 │  Includes:       │        │  Includes:       │        │  Includes:       │
 │  Topics with     │        │  Topics ready    │        │  Graduated       │
-│  "ready-for-     │        │  for release     │        │  topics          │
-│   integration"   │        │                  │        │                  │
+│  "status: ready" │        │  for release     │        │  topics          │
 │  label           │        │                  │        │                  │
+│                  │        │                  │        │                  │
 │                  │        │                  │        │                  │
 │  Rebuilt:        │        │  Rebuilt:        │        │  Never           │
 │  On label add +  │        │  After releases  │        │  rebased         │
@@ -172,19 +172,19 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 
   Label                    │ Meaning                          │ Added By
   ─────────────────────────┼──────────────────────────────────┼──────────────
-  ci-passed                │ Automated tests passed           │ CI workflow
-  ci-failed                │ Automated tests failed           │ CI workflow
-  needs-review             │ Waiting for human approval       │ CI workflow
-  ready-for-integration    │ CI + approval, enters dev        │ CI workflow
-  has-conflict             │ Merge conflict in dev rebuild    │ Rebuild workflow
-  in-staging               │ Promoted to staging              │ Promote workflow
-  approved-for-release     │ Ready to merge to master         │ CI workflow
+  status: ci-passed        │ Automated tests passed           │ CI workflow
+  status: ci-failed        │ Automated tests failed           │ CI workflow
+  status: needs-review     │ Waiting for human approval       │ CI workflow
+  status: ready            │ CI + approval, enters dev        │ CI workflow
+  status: conflict         │ Merge conflict in dev rebuild    │ Rebuild workflow
+  env: staging             │ Promoted to staging              │ Promote workflow
+  status: approved         │ Ready to merge to master         │ CI workflow
   blocked                  │ Do not integrate                 │ Manual
 
   Merge Gate:
   - "Merge Gate" check is REQUIRED to merge to master
-  - Only passes when "approved-for-release" label is present
-  - Requires: CI passed + code review approval + in-staging label
+  - Only passes when "status: approved" label is present
+  - Requires: CI passed + code review approval + env: staging label
 
 
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -205,7 +205,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 
   The `rebuild-and-deploy.yml` workflow triggers on:
 
-  1. **Label Event** (instant): When a user manually adds the `ready-for-integration`
+  1. **Label Event** (instant): When a user manually adds the `status: ready`
      label to a PR, the workflow triggers immediately.
      
      Note: Labels added by workflows (e.g., pr-checks adding the label after
@@ -246,10 +246,10 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   ┌───────────────────┐                             ┌───────────────────┐
   │ ✅ In dev          │                             │ 1. Merge aborted  │
   │ ✅ Deployed to    │                             │ 2. Label REMOVED: │
-  │    Alpha          │                             │    "ready-for-    │
-  │ ✅ Comment posted │                             │     integration"  │
+  │    Alpha          │                             │    "status: ready"│
+  │ ✅ Comment posted │                             │                   │
   │    on PR          │                             │ 3. Label ADDED:   │
-  └───────────────────┘                             │    "has-conflict" │
+  └───────────────────┘                             │   "status:conflict│
                                                     │ 4. Comment posted │
                                                     │    with fix       │
                                                     │    instructions   │
@@ -272,10 +272,10 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
                                                     │                   │
                                                     │ ✅ Passes →       │
                                                     │   Labels updated  │
-                                                    │   "has-conflict"  │
+                                                    │   "status:        │
+                                                    │    conflict"      │
                                                     │   removed         │
-                                                    │   "ready-for-     │
-                                                    │    integration"   │
+                                                    │   "status: ready" │
                                                     │   re-added        │
                                                     └─────────┬─────────┘
                                                               │
@@ -299,7 +299,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   │                                                                             │
   │  **What this means:**                                                       │
   │  - Your code is NOT currently deployed to the Alpha server                  │
-  │  - The `ready-for-integration` label has been removed                       │
+  │  - The `status: ready` label has been removed                               │
   │  - You need to resolve the conflict before your code can be integrated      │
   │                                                                             │
   │  **How to fix:**                                                            │
@@ -340,15 +340,15 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
      - Labels track progress through the pipeline
      - PR is merged only when ready for production
 
-  5. CLEAR PROMOTION PATH
-      - topic → dev (automatic, after gates pass, "ready-for-integration" label)
-      - dev → staging (manual, release manager promotes, "in-staging" label)
-      - staging → master (PR merge after "approved-for-release" label, triggers release)
-      
-      Merge to master requires all three:
-      - CI passed
-      - Code review approval  
-      - in-staging label (proves staging validation)
+   5. CLEAR PROMOTION PATH
+       - topic → dev (automatic, after gates pass, "status: ready" label)
+       - dev → staging (manual, release manager promotes, "env: staging" label)
+       - staging → master (PR merge after "status: approved" label, triggers release)
+       
+       Merge to master requires all three:
+       - CI passed
+       - Code review approval  
+       - env: staging label (proves staging validation)
 
   6. CONFLICT HANDLING
      - Conflicts during dev rebuild are detected and reported

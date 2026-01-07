@@ -45,7 +45,7 @@ jobs:
     if: |
       github.event_name == 'schedule' ||
       github.event.inputs.rebuild_dev == 'true' ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ready-for-integration') ||
+       (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'status: ready') ||
       (github.event_name == 'pull_request' && github.event.action == 'closed')
     outputs:
       merged_topics: ${{ steps.rebuild.outputs.merged_topics }}
@@ -63,14 +63,14 @@ jobs:
           git config user.email "$GIT_AUTHOR_EMAIL"
           git config rerere.enabled true
 
-      - name: Get topics with ready-for-integration label
+      - name: "Get topics with status: ready label"
         id: get_topics
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TRIGGER_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           # Get all PRs with the label
-          topics=$(gh pr list --label "ready-for-integration" --json headRefName --jq '.[].headRefName' | sort -u)
+          topics=$(gh pr list --label "status: ready" --json headRefName --jq '.[].headRefName' | sort -u)
           
           # If triggered by label event, ensure triggering branch is included
           # (gh pr list may not reflect the label immediately)
@@ -176,8 +176,8 @@ jobs:
                 # Get PR number and update labels
                 pr_number=$(gh pr list --head "$topic" --json number --jq '.[0].number')
                 if [ -n "$pr_number" ]; then
-                  gh pr edit "$pr_number" --remove-label "ready-for-integration" || true
-                  gh pr edit "$pr_number" --add-label "has-conflict" || true
+                  gh pr edit "$pr_number" --remove-label "status: ready" || true
+                  gh pr edit "$pr_number" --add-label "status: conflict" || true
 
                   # Post conflict comment
                   gh pr comment "$pr_number" --body "## Merge Conflict in Integration Branch
@@ -186,7 +186,7 @@ jobs:
 
           **What this means:**
           - Your code is NOT currently deployed to the Alpha server
-          - The \`ready-for-integration\` label has been removed
+          - The \`status: ready\` label has been removed
           - You need to resolve the conflict before your code can be integrated
 
           **How to fix:**
@@ -201,7 +201,7 @@ jobs:
 
           **Conflicting with:** \`$last_merged\` (or earlier topic)
 
-          Once you push the fix, CI will re-run and re-add the \`ready-for-integration\` label if all checks pass."
+          Once you push the fix, CI will re-run and re-add the \`status: ready\` label if all checks pass."
                 fi
               fi
             fi
@@ -245,7 +245,7 @@ jobs:
       needs.rebuild-dev.result == 'success' &&
       (github.event_name == 'schedule' || 
        github.event.inputs.deploy_alpha == 'true' ||
-       (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ready-for-integration') ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'status: ready') ||
        (github.event_name == 'pull_request' && github.event.action == 'closed'))
     environment:
       name: alpha
@@ -285,7 +285,7 @@ jobs:
       (github.event_name == 'pull_request' && 
        github.event.action == 'closed' && 
        github.event.pull_request.merged == false &&
-       contains(github.event.pull_request.labels.*.name, 'in-staging'))
+       contains(github.event.pull_request.labels.*.name, 'env: staging'))
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -307,9 +307,9 @@ jobs:
 
           git fetch origin staging master
 
-          # Get topics with in-staging label that are still open
-          open_staging_topics=$(gh pr list --label "in-staging" --state open --json headRefName --jq '.[].headRefName' | sort -u || true)
-          echo "Open PRs with in-staging label: $open_staging_topics"
+          # Get topics with env: staging label that are still open
+          open_staging_topics=$(gh pr list --label "env: staging" --state open --json headRefName --jq '.[].headRefName' | sort -u || true)
+          echo "Open PRs with env: staging label: $open_staging_topics"
 
           # Reset staging to master
           git checkout -B staging origin/master
@@ -341,7 +341,7 @@ jobs:
        (github.event_name == 'pull_request' && 
         github.event.action == 'closed' && 
         github.event.pull_request.merged == false &&
-        contains(github.event.pull_request.labels.*.name, 'in-staging')))
+        contains(github.event.pull_request.labels.*.name, 'env: staging')))
     environment:
       name: staging
       url: https://staging.yourapp.com

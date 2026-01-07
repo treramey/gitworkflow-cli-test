@@ -196,7 +196,7 @@ jobs:
                 # Update PR label
                 pr_number=$(gh pr list --head "$topic" --state merged --json number --jq '.[0].number' 2>/dev/null || echo "")
                 if [ -n "$pr_number" ]; then
-                  gh pr edit "$pr_number" --remove-label "in-staging" 2>/dev/null || true
+                  gh pr edit "$pr_number" --remove-label "env: staging" 2>/dev/null || true
                 fi
               fi
             fi
@@ -211,7 +211,7 @@ jobs:
           git fetch origin dev
 
           # Get labeled topics (still open)
-          labeled_topics=$(gh pr list --label "ready-for-integration" --json headRefName --jq '.[].headRefName' | sort -u || true)
+          labeled_topics=$(gh pr list --label "status: ready" --json headRefName --jq '.[].headRefName' | sort -u || true)
 
           # Reset dev to master
           git checkout -B dev origin/master

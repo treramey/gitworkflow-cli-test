@@ -92,8 +92,8 @@ jobs:
           pr_number="${{ steps.validate.outputs.pr_number }}"
           topic="${{ inputs.topic_branch }}"
 
-          # Add in-staging label
-          gh pr edit "$pr_number" --add-label "in-staging"
+          # Add env: staging label
+          gh pr edit "$pr_number" --add-label "env: staging"
 
           # Post comment
           gh pr comment "$pr_number" --body "Promoted to **staging** branch.
