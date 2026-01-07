@@ -240,8 +240,8 @@ jobs:
             fi
           done
 
-          # Force push dev
-          git push origin dev --force-with-lease
+          # Force push dev (use --force since dev is ephemeral and rebuilt from scratch)
+          git push origin dev --force
 
           # Set outputs
           echo "merged_topics=$merged_topics" >> $GITHUB_OUTPUT
@@ -464,7 +464,8 @@ jobs:
             fi
           done
 
-          git push origin staging --force-with-lease
+          # Force push staging (use --force since staging is ephemeral and rebuilt from scratch)
+          git push origin staging --force
 
   build-staging:
     name: build-staging
