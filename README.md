@@ -45,3 +45,7 @@ gitworkflow-ci-test/
 ## Testing
 
 This is a test change for PR validation.
+
+## Test PR 2
+
+Verifying skip/neutral behavior for staging gate.
