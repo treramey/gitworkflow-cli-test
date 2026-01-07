@@ -44,4 +44,4 @@ gitworkflow-ci-test/
 
 ## Testing
 
-This is a test change for PR validation.
+Full flow test - workflow fixes applied.
