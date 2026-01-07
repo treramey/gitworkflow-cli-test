@@ -146,7 +146,8 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           reviews=$(gh api repos/$REPO/pulls/$PR_NUMBER/reviews)
-          approved=$(echo "$reviews" | jq '[.[] | select(.state == "APPROVED")] | length')
+          # Filter out dismissed approvals
+          approved=$(echo "$reviews" | jq '[.[] | select(.state == "APPROVED" and .dismissedAt == null)] | length')
           if [ "$approved" -gt 0 ]; then
             echo "approved=true" >> $GITHUB_OUTPUT
           else
@@ -157,29 +158,29 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # Build labels
+          # Build labels (consolidated API calls)
           if [ "${{ steps.build_status.outputs.passed }}" == "true" ]; then
-            gh pr edit $PR_NUMBER --repo $REPO --remove-label "status: ci-failed" 2>/dev/null || true
-            gh pr edit $PR_NUMBER --repo $REPO --add-label "status: ci-passed"
-            gh pr edit $PR_NUMBER --repo $REPO --remove-label "status: conflict" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --repo $REPO \
+              --remove-label "status: ci-failed,status: conflict" \
+              --add-label "status: ci-passed" 2>/dev/null || true
           else
-            gh pr edit $PR_NUMBER --repo $REPO --remove-label "status: ci-passed" 2>/dev/null || true
-            gh pr edit $PR_NUMBER --repo $REPO --add-label "status: ci-failed"
-          fi
-
-          # Review labels
-          if [ "${{ steps.review_status.outputs.approved }}" != "true" ]; then
-            gh pr edit $PR_NUMBER --repo $REPO --add-label "status: needs-review" 2>/dev/null || true
-          else
-            gh pr edit $PR_NUMBER --repo $REPO --remove-label "status: needs-review" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --repo $REPO \
+              --remove-label "status: ci-passed" \
+              --add-label "status: ci-failed" 2>/dev/null || true
           fi
 
           # Ready for integration (build + approval)
-          if [ "${{ steps.build_status.outputs.passed }}" == "true" ] && [ "${{ steps.review_status.outputs.approved }}" == "true" ]; then
-            gh pr edit $PR_NUMBER --repo $REPO --add-label "env: dev"
-            gh pr edit $PR_NUMBER --repo $REPO --remove-label "status: needs-review" 2>/dev/null || true
+          if [ "${{ steps.build_status.outputs.passed }}" == "true" ] && \
+             [ "${{ steps.review_status.outputs.approved }}" == "true" ]; then
+            gh pr edit $PR_NUMBER --repo $REPO \
+              --remove-label "status: needs-review" \
+              --add-label "env: dev" 2>/dev/null || true
+          elif [ "${{ steps.review_status.outputs.approved }}" != "true" ]; then
+            gh pr edit $PR_NUMBER --repo $REPO \
+              --add-label "status: needs-review" 2>/dev/null || true
           else
-            echo "Not all gates passed yet"
+            gh pr edit $PR_NUMBER --repo $REPO \
+              --remove-label "status: needs-review" 2>/dev/null || true
           fi
 
       - name: Check staging status

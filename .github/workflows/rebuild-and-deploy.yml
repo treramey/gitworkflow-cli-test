@@ -189,11 +189,19 @@ jobs:
                 conflicted_topics="$conflicted_topics $topic"
                 conflict_details="$conflict_details|$topic:$last_merged"
 
+                # Determine what we conflicted with
+                if [ -z "$last_merged" ]; then
+                  conflict_with="master or earlier staging topics"
+                else
+                  conflict_with="$last_merged"
+                fi
+
                 # Get PR number and update labels
                 pr_number=$(gh pr list --head "$topic" --json number --jq '.[0].number')
                 if [ -n "$pr_number" ]; then
-                  gh pr edit "$pr_number" --remove-label "env: dev" || true
-                  gh pr edit "$pr_number" --add-label "status: conflict" || true
+                  gh pr edit "$pr_number" \
+                    --remove-label "env: dev" \
+                    --add-label "status: conflict" 2>/dev/null || true
 
                   # Post conflict comment
                   gh pr comment "$pr_number" --body "## Merge Conflict in Integration Branch
@@ -215,7 +223,7 @@ jobs:
           git push --force-with-lease
           \`\`\`
 
-          **Conflicting with:** \`$last_merged\` (or earlier topic)
+          **Conflicting with:** \`$conflict_with\`
 
           Once you push the fix, CI will re-run and re-add the \`env: dev\` label if all checks pass."
                 fi
@@ -242,8 +250,8 @@ jobs:
           for topic in ${{ steps.rebuild.outputs.merged_topics }}; do
             pr_number=$(gh pr list --head "$topic" --json number --jq '.[0].number')
             if [ -n "$pr_number" ]; then
-              # Check if we already commented recently (avoid spam)
-              recent=$(gh pr view "$pr_number" --json comments --jq '.comments[-1].body' 2>/dev/null || echo "")
+              # Check last 5 comments to avoid spam (not just the last one)
+              recent=$(gh pr view "$pr_number" --json comments --jq '[.comments[-5:][].body] | join("\n")' 2>/dev/null || echo "")
               env_name="Dev"
               branch_name="dev"
               if ! echo "$recent" | grep -q "Promoted to **$env_name**"; then
@@ -258,19 +266,11 @@ jobs:
             fi
           done
 
-  deploy-alpha:
-    name: Deploy Alpha
+  build-dev:
+    name: Build dev
     runs-on: ubuntu-latest
     needs: rebuild-dev
-    if: |
-      needs.rebuild-dev.result == 'success' &&
-      (github.event_name == 'schedule' || 
-       github.event.inputs.deploy_alpha == 'true' ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'env: dev') ||
-       (github.event_name == 'pull_request' && github.event.action == 'closed'))
-    environment:
-      name: alpha
-      url: https://alpha.yourapp.com
+    if: needs.rebuild-dev.result == 'success'
     steps:
       - name: Checkout dev
         uses: actions/checkout@v4
@@ -287,6 +287,35 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-build
+          path: |
+            apps/web/.output/
+            apps/web/.vinxi/
+          retention-days: 1
+
+  deploy-alpha:
+    name: Deploy Alpha
+    runs-on: ubuntu-latest
+    needs: build-dev
+    if: |
+      needs.build-dev.result == 'success' &&
+      (github.event_name == 'schedule' || 
+       github.event.inputs.deploy_alpha == 'true' ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'env: dev') ||
+       (github.event_name == 'pull_request' && github.event.action == 'closed'))
+    environment:
+      name: alpha
+      url: https://alpha.yourapp.com
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dev-build
+          path: apps/web/
 
       - name: Deploy to Alpha
         run: |
@@ -414,18 +443,14 @@ jobs:
 
           git push origin staging --force-with-lease
 
-  deploy-staging:
-    name: Deploy Staging
+  build-staging:
+    name: Build staging
     runs-on: ubuntu-latest
     needs: [promote-to-staging, rebuild-staging]
     if: |
       always() &&
       (needs.promote-to-staging.result == 'success' ||
-       needs.rebuild-staging.result == 'success' ||
-       github.event.inputs.deploy_staging == 'true')
-    environment:
-      name: staging
-      url: https://staging.yourapp.com
+       needs.rebuild-staging.result == 'success')
     steps:
       - name: Checkout staging
         uses: actions/checkout@v4
@@ -442,6 +467,32 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-build
+          path: |
+            apps/web/.output/
+            apps/web/.vinxi/
+          retention-days: 1
+
+  deploy-staging:
+    name: Deploy Staging
+    runs-on: ubuntu-latest
+    needs: build-staging
+    if: |
+      needs.build-staging.result == 'success' ||
+      github.event.inputs.deploy_staging == 'true'
+    environment:
+      name: staging
+      url: https://staging.yourapp.com
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: staging-build
+          path: apps/web/
 
       - name: Deploy to Staging
         run: |

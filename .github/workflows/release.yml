@@ -158,14 +158,8 @@ jobs:
           git commit -m "chore: release v${{ steps.bump.outputs.version }}"
           git tag -a "${{ steps.bump.outputs.tag }}" -m "Release ${{ steps.bump.outputs.version }}"
 
-      - name: Archive maint and update
-        run: |
-          # Archive current maint (optional)
-          timestamp=$(date +%Y%m%d)
-          git branch -m origin/maint archive/maint-$timestamp 2>/dev/null || true
-
-          # Update maint to match master
-          git push origin master:maint --force
+      - name: Update maint to match master
+        run: git push origin master:maint --force
 
       - name: Push master with tags
         run: |
@@ -255,13 +249,10 @@ jobs:
             --title "Release ${{ steps.bump.outputs.version }}" \
             --notes "${{ steps.changelog.outputs.changelog }}"
 
-  deploy-production:
-    name: Deploy Production
+  build-release:
+    name: Build release
     runs-on: ubuntu-latest
     needs: release
-    environment:
-      name: production
-      url: https://yourapp.com
     steps:
       - name: Checkout master
         uses: actions/checkout@v4
@@ -278,6 +269,29 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build
+          path: |
+            apps/web/.output/
+            apps/web/.vinxi/
+          retention-days: 1
+
+  deploy-production:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    needs: [release, build-release]
+    environment:
+      name: production
+      url: https://yourapp.com
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-build
+          path: apps/web/
 
       - name: Deploy to Production
         run: |

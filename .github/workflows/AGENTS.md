@@ -39,6 +39,8 @@ Gitworkflow CI/CD: ephemeral integration branches rebuilt by CI, label-driven pr
 - **Concurrency**: `rebuild-dev` group, no cancel-in-progress (queue rebuilds)
 - **Force push**: `--force-with-lease` only, never bare `--force`
 - **rerere**: Enabled in all git configs
+- **Build artifacts**: Build once per environment, share via `actions/upload-artifact@v4`
+- **Artifact retention**: 1 day (ephemeral, consumed immediately by deploy jobs)
 
 ## ANTI-PATTERNS
 
@@ -60,6 +62,22 @@ On merge conflict during rebuild:
 2. Remove `env: dev`, add `status: conflict`
 3. Post fix instructions to PR
 4. Continue with other topics
+
+## BUILD PIPELINE
+
+```
+rebuild-dev → build-dev → deploy-alpha
+                ↓
+            dev-build artifact (1 day retention)
+
+promote-to-staging/rebuild-staging → build-staging → deploy-staging
+                                          ↓
+                                  staging-build artifact
+
+release → build-release → deploy-production
+              ↓
+        release-build artifact
+```
 
 ## NOTES
 
