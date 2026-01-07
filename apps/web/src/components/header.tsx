@@ -16,7 +16,7 @@ export default function Header() {
           })}
         </nav>
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-xs">Fast Track Feature</span>
+          <span className="text-muted-foreground text-xs">Test Staging Cleanup</span>
         </div>
       </div>
       <hr />
