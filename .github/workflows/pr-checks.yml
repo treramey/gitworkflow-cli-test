@@ -110,14 +110,20 @@ jobs:
     needs: [build]
     if: always()
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
       - name: Check build status
         id: build_status
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # If build ran this workflow, use its output
           if [ "${{ needs.build.outputs.passed }}" == "true" ]; then
@@ -136,6 +142,8 @@ jobs:
 
       - name: Check review status
         id: review_status
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           reviews=$(gh api repos/$REPO/pulls/$PR_NUMBER/reviews)
           approved=$(echo "$reviews" | jq '[.[] | select(.state == "APPROVED")] | length')
@@ -146,6 +154,8 @@ jobs:
           fi
 
       - name: Update labels
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # Build labels
           if [ "${{ steps.build_status.outputs.passed }}" == "true" ]; then
@@ -174,6 +184,8 @@ jobs:
 
       - name: Check staging status
         id: staging_status
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           labels=$(gh api repos/$REPO/pulls/$PR_NUMBER --jq '.labels[].name')
           if echo "$labels" | grep -qF "env: staging"; then
@@ -184,6 +196,8 @@ jobs:
 
       - name: Update release approval
         id: release_status
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # Approved for release (build + approval + env: staging)
           if [ "${{ steps.build_status.outputs.passed }}" == "true" ] && \
