@@ -39,13 +39,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rebuild-dev:
-    name: Rebuild dev
+  # Gatekeeper - prevents workflow from running on irrelevant label events
+  should-run:
+    name: Check trigger
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action == 'closed') ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'status: ready')
+    steps:
+      - run: echo "Workflow triggered by valid event"
+    outputs:
+      triggered: ${{ github.event_name }}
+
+  rebuild-dev:
+    name: Rebuild dev
+    runs-on: ubuntu-latest
+    needs: should-run
+    if: |
+      github.event_name == 'schedule' ||
       github.event.inputs.rebuild_dev == 'true' ||
-       (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'status: ready') ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'status: ready') ||
       (github.event_name == 'pull_request' && github.event.action == 'closed')
     outputs:
       merged_topics: ${{ steps.rebuild.outputs.merged_topics }}
@@ -280,6 +295,7 @@ jobs:
   rebuild-staging:
     name: Rebuild staging
     runs-on: ubuntu-latest
+    needs: should-run
     if: |
       github.event.inputs.rebuild_staging == 'true' ||
       (github.event_name == 'pull_request' && 
