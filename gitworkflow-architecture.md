@@ -178,12 +178,12 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   status: ready            │ CI + approval, enters dev        │ CI workflow
   status: conflict         │ Merge conflict in dev rebuild    │ Rebuild workflow
   env: staging             │ Promoted to staging              │ Promote workflow
-  status: approved         │ Ready to merge to master         │ CI workflow
+  env: qa                  │ Ready to merge to master         │ CI workflow
   blocked                  │ Do not integrate                 │ Manual
 
   Merge Gate:
   - "Merge Gate" check is REQUIRED to merge to master
-  - Only passes when "status: approved" label is present
+  - Only passes when "env: qa" label is present
   - Requires: CI passed + code review approval + env: staging label
 
 
@@ -343,7 +343,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
    5. CLEAR PROMOTION PATH
        - topic → dev (automatic, after gates pass, "status: ready" label)
        - dev → staging (manual, release manager promotes, "env: staging" label)
-       - staging → master (PR merge after "status: approved" label, triggers release)
+       - staging → master (PR merge after "env: qa" label, triggers release)
        
        Merge to master requires all three:
        - CI passed

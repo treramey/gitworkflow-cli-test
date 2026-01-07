@@ -203,11 +203,11 @@ jobs:
           if [ "${{ steps.build_status.outputs.passed }}" == "true" ] && \
              [ "${{ steps.review_status.outputs.approved }}" == "true" ] && \
              [ "${{ steps.staging_status.outputs.in_staging }}" == "true" ]; then
-            gh pr edit $PR_NUMBER --repo $REPO --add-label "status: approved"
+            gh pr edit $PR_NUMBER --repo $REPO --add-label "env: qa"
             echo "approved=true" >> $GITHUB_OUTPUT
             echo "All gates passed - approved for release"
           else
-            gh pr edit $PR_NUMBER --repo $REPO --remove-label "status: approved" 2>/dev/null || true
+            gh pr edit $PR_NUMBER --repo $REPO --remove-label "env: qa" 2>/dev/null || true
             echo "approved=false" >> $GITHUB_OUTPUT
             echo "Not ready for release: build=${{ steps.build_status.outputs.passed }} approved=${{ steps.review_status.outputs.approved }} in_staging=${{ steps.staging_status.outputs.in_staging }}"
           fi
@@ -233,7 +233,7 @@ jobs:
             echo "  4. Topic merges to dev on next rebuild"
             echo "  5. Release manager promotes to staging"
             echo "  6. 'env: staging' label added"
-            echo "  7. 'status: approved' label auto-added"
+            echo "  7. 'env: qa' label auto-added"
             echo "  8. Merge allowed"
             exit 1
           fi
