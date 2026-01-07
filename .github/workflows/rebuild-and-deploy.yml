@@ -246,12 +246,12 @@ jobs:
               recent=$(gh pr view "$pr_number" --json comments --jq '.comments[-1].body' 2>/dev/null || echo "")
               if ! echo "$recent" | grep -q "Promoted to **Dev**"; then
                 commit_sha=$(git rev-parse --short HEAD)
-                timestamp=$(date -u '+%b %d, %Y %l:%M%P')
+                timestamp=$(date -u '+%b %-d, %Y %-I:%M%P')
                 gh pr comment "$pr_number" --body "## Promoted to **Dev** environment
 
-          | Branch | Status | Commit | Updated (UTC) |
-          |--------|--------|--------|---------------|
-          | \`$topic\` | 🟢 Deployed | \`$commit_sha\` | $timestamp |"
+          | Branch | Commit | Updated (UTC) |
+          |--------|--------|---------------|
+          | \`$topic\` | \`$commit_sha\` | $timestamp |"
               fi
             fi
           done
@@ -348,12 +348,12 @@ jobs:
         run: |
           topic="${{ github.event.pull_request.head.ref }}"
           commit_sha=$(git rev-parse --short HEAD)
-          timestamp=$(date -u '+%b %d, %Y %l:%M%P')
+          timestamp=$(date -u '+%b %-d, %Y %-I:%M%P')
           gh pr comment ${{ github.event.pull_request.number }} --body "## Promoted to **Staging** environment
 
-          | Branch | Status | Commit | Updated (UTC) |
-          |--------|--------|--------|---------------|
-          | \`$topic\` | 🟢 Deployed | \`$commit_sha\` | $timestamp |"
+          | Branch | Commit | Updated (UTC) |
+          |--------|--------|---------------|
+          | \`$topic\` | \`$commit_sha\` | $timestamp |"
 
   rebuild-staging:
     name: Rebuild staging
