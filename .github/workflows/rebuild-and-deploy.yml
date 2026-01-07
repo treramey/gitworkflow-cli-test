@@ -244,11 +244,14 @@ jobs:
             if [ -n "$pr_number" ]; then
               # Check if we already commented recently (avoid spam)
               recent=$(gh pr view "$pr_number" --json comments --jq '.comments[-1].body' 2>/dev/null || echo "")
-              if ! echo "$recent" | grep -q "deployed to Alpha"; then
-                gh pr comment "$pr_number" --body "Deployed to **Alpha** environment via \`dev\` branch rebuild.
+              if ! echo "$recent" | grep -q "Promoted to **Dev**"; then
+                commit_sha=$(git rev-parse --short HEAD)
+                timestamp=$(date -u '+%b %d, %Y %l:%M%P')
+                gh pr comment "$pr_number" --body "## Promoted to **Dev** environment
 
-          - Commit: \`$(git rev-parse --short HEAD)\`
-          - Time: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          | Branch | Status | Commit | Updated (UTC) |
+          |--------|--------|--------|---------------|
+          | \`$topic\` | ✅ Deployed | \`$commit_sha\` | $timestamp |"
               fi
             fi
           done
@@ -343,12 +346,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "Promoted to **staging** branch.
+          topic="${{ github.event.pull_request.head.ref }}"
+          commit_sha=$(git rev-parse --short HEAD)
+          timestamp=$(date -u '+%b %d, %Y %l:%M%P')
+          gh pr comment ${{ github.event.pull_request.number }} --body "## Promoted to **Staging** environment
 
-          - Topic: \`${{ github.event.pull_request.head.ref }}\`
-          - Time: $(date -u '+%Y-%m-%d %H:%M UTC')
-
-          Deploying to Staging environment now..."
+          | Branch | Status | Commit | Updated (UTC) |
+          |--------|--------|--------|---------------|
+          | \`$topic\` | ✅ Deployed | \`$commit_sha\` | $timestamp |"
 
   rebuild-staging:
     name: Rebuild staging
