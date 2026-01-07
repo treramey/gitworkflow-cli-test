@@ -34,10 +34,12 @@ Gitworkflow CI/CD test bed - TypeScript monorepo (Turborepo + Bun) with TanStack
 ## CONVENTIONS
 
 ### Git Workflow (CRITICAL)
-- **Branch from master ONLY** - never from staging/dev
+- **Branch from master** for features - never from staging/dev
+- **Branch from maint** for hotfixes (or `maint-X.Y` for older releases)
 - **Never commit to dev/staging** - they are ephemeral, rebuilt by CI
 - **Topic branch format**: `<initials>/<feature-name>` (e.g., `jd/add-auth`)
-- **Single PR to master** - labels control promotion through environments
+- **Feature PR to master** - labels control promotion through environments
+- **Hotfix PR to maint** - bypasses dev/staging, direct to production
 - **Conventional commits**: `feat:`, `fix:`, `docs:`, etc.
 
 ### Integration Branches
@@ -94,6 +96,7 @@ git rebuild-dev          # Local dev rebuild (test)
 
 ## LABEL FLOW
 
+**Feature PRs (to master):**
 ```
 PR opened → CI runs → status: ci-passed → approval → env: dev
                                                         ↓
@@ -104,6 +107,17 @@ PR opened → CI runs → status: ci-passed → approval → env: dev
                                               (staging deploy)
                                                         ↓
                                               merge to master → release
+```
+
+**Hotfix PRs (to maint):**
+```
+PR opened → CI runs → status: ci-passed → approval → merge to maint
+                                                        ↓
+                                              (auto: patch release)
+                                                        ↓
+                                              (auto: deploy to production)
+                                                        ↓
+                                              (auto: merge maint → master)
 ```
 
 ## NOTES

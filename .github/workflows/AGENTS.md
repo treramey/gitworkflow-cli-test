@@ -12,15 +12,17 @@ Gitworkflow CI/CD: ephemeral integration branches rebuilt by CI, label-driven pr
 | Dev/staging rebuild | `rebuild-and-deploy.yml` | Triggered by labels, schedule, dispatch |
 | Manual promotion | `promote-to-staging.yml` | Release manager promotes topic |
 | Release automation | `release.yml` | On PR merge to master |
+| Hotfix release | `hotfix.yml` | On PR merge to maint/maint-X.Y |
 
 ## WORKFLOW TRIGGERS
 
 | Workflow | Triggers |
 |----------|----------|
-| pr-checks | PR to master (opened/sync/review) |
+| pr-checks | PR to master/maint/maint-* (opened/sync/review) |
 | rebuild-and-deploy | `env: dev` label, schedule (2h), dispatch, PR closed |
 | promote-to-staging | Manual dispatch only |
 | release | PR merged to master |
+| hotfix | PR merged to maint or maint-* |
 
 ## LABEL SEMANTICS
 
@@ -62,12 +64,17 @@ Gitworkflow CI/CD: ephemeral integration branches rebuilt by CI, label-driven pr
 - **DO NOT** change label names without updating all workflows
 - **DO NOT** skip `should-run` job gating
 
-## MERGE GATE
+## MERGE GATES
 
-`require-staging-approval` job blocks merge until:
+**PRs to master** (`require-staging-approval`):
 1. `status: ci-passed`
 2. Code review approval
 3. `env: staging` label
+
+**Hotfix PRs to maint** (`require-hotfix-approval`):
+1. `status: ci-passed`
+2. Code review approval
+3. NO staging requirement (bypass dev/staging)
 
 ## CONFLICT HANDLING
 
@@ -76,6 +83,28 @@ On merge conflict during rebuild:
 2. Remove `env: dev`, add `status: conflict`
 3. Post fix instructions to PR
 4. Continue with other topics
+
+## HOTFIX FLOW
+
+Hotfixes bypass dev/staging, merge directly to maint:
+
+```
+topic (from maint) → PR to maint → merge → patch release → deploy → maint merged to master
+```
+
+| Step | Action | Auto |
+|------|--------|------|
+| 1 | Branch from `maint` (or `maint-X.Y`) | Manual |
+| 2 | Open PR targeting `maint` | Manual |
+| 3 | CI + approval (no staging required) | Auto |
+| 4 | Merge to maint | Manual |
+| 5 | Patch version bump + tag + release | Auto |
+| 6 | Deploy to production | Auto (maint only) |
+| 7 | Merge `maint` → `master` | Auto (maint only) |
+
+**maint-X.Y hotfixes:** Tag + release only. NO auto-deploy, NO merge to master.
+
+**Conflict on maint→master:** Workflow fails loudly, requires manual resolution.
 
 ## BUILD PIPELINE
 
@@ -91,6 +120,10 @@ promote-to-staging/rebuild-staging → build-staging → deploy-staging
 release → build-release → deploy-production
               ↓
         release-build artifact
+
+hotfix (maint) → build-hotfix → deploy-production
+                     ↓
+              hotfix-build artifact
 ```
 
 ## NOTES
