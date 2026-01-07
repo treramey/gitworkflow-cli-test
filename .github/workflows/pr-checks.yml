@@ -242,6 +242,34 @@ jobs:
       - name: Release approved
         run: echo "PR approved for release - merge allowed"
 
+  # Status summary (informational, never fails)
+  merge-status:
+    name: merge-status
+    runs-on: ubuntu-latest
+    needs: [pr-labels]
+    if: always() && github.base_ref == 'master'
+    steps:
+      - name: Show merge status
+        run: |
+          echo "## Merge Status"
+          echo ""
+          echo "Build passed: ${{ needs.pr-labels.outputs.build_passed }}"
+          echo "Code review: ${{ needs.pr-labels.outputs.approved }}"
+          echo "Release approved: ${{ needs.pr-labels.outputs.release_approved }}"
+          echo ""
+          if [ "${{ needs.pr-labels.outputs.release_approved }}" == "true" ]; then
+            echo "✓ Ready to merge"
+          else
+            echo "Flow to merge:"
+            echo "  1. Build must pass (type-check + build)"
+            echo "  2. Get code review approval"
+            echo "  3. Wait for 'env: dev' label (auto-added)"
+            echo "  4. Topic merges to dev on next rebuild"
+            echo "  5. Release manager promotes to staging"
+            echo "  6. 'env: staging' label added"
+            echo "  7. Merge allowed"
+          fi
+
   # Merge gate for hotfix PRs to maint (CI + approval only, no staging)
   require-hotfix-approval:
     name: require-hotfix-approval
