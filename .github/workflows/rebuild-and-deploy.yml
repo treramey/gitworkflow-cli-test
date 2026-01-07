@@ -307,17 +307,15 @@ jobs:
 
           git fetch origin staging master
 
-          # Get topics currently in staging that haven't graduated
-          topics=$(git log origin/master..origin/staging --merges --first-parent --pretty=format:'%s' | \
-            grep -oE "Merge branch '[^']+" | sed "s/Merge branch '//g" | sort -u || true)
-
-          echo "Topics to re-merge: $topics"
+          # Get topics with in-staging label that are still open
+          open_staging_topics=$(gh pr list --label "in-staging" --state open --json headRefName --jq '.[].headRefName' | sort -u || true)
+          echo "Open PRs with in-staging label: $open_staging_topics"
 
           # Reset staging to master
           git checkout -B staging origin/master
 
-          # Re-merge non-graduated topics
-          for topic in $topics; do
+          # Re-merge only topics that have open PRs with in-staging label
+          for topic in $open_staging_topics; do
             if [ -z "$topic" ]; then continue; fi
             if git rev-parse --verify "origin/$topic" &>/dev/null; then
               if ! git merge-base --is-ancestor "origin/$topic" origin/master 2>/dev/null; then
