@@ -67,6 +67,16 @@ jobs:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_PRIVATE_KEY }}
 
+      - name: Get PR base ref
+        id: pr_info
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # github.base_ref is empty for pull_request_review events
+          # Get it from the PR itself
+          base_ref=$(gh api repos/$REPO/pulls/$PR_NUMBER --jq '.base.ref')
+          echo "base_ref=$base_ref" >> $GITHUB_OUTPUT
+
       - name: Check build status
         id: build_status
         env:
@@ -104,7 +114,7 @@ jobs:
       - name: Update labels
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ steps.pr_info.outputs.base_ref }}
         run: |
           # Build labels
           if [ "${{ steps.build_status.outputs.passed }}" == "true" ]; then
@@ -164,6 +174,7 @@ jobs:
       approved: ${{ steps.review_status.outputs.approved }}
       in_dev: ${{ steps.dev_status.outputs.in_dev }}
       in_staging: ${{ steps.staging_status.outputs.in_staging }}
+      base_ref: ${{ steps.pr_info.outputs.base_ref }}
 
   # Trigger dev rebuild when CI passes (since workflow-added labels don't trigger events)
   trigger-dev-rebuild:
@@ -172,7 +183,7 @@ jobs:
     needs: [pr-labels]
     if: |
       needs.pr-labels.outputs.build_passed == 'true' &&
-      github.base_ref == 'master' &&
+      needs.pr-labels.outputs.base_ref == 'master' &&
       github.event.action != 'labeled'
     steps:
       - name: Trigger rebuild workflow
@@ -190,7 +201,7 @@ jobs:
     name: rebuild-gate
     runs-on: ubuntu-latest
     needs: [pr-labels]
-    if: always() && github.base_ref == 'master'
+    if: always() && needs.pr-labels.outputs.base_ref == 'master'
     steps:
       - name: Check merge requirements
         run: |
@@ -239,7 +250,7 @@ jobs:
     name: require-hotfix-approval
     runs-on: ubuntu-latest
     needs: [pr-labels]
-    if: always() && (github.base_ref == 'maint' || startsWith(github.base_ref, 'maint-'))
+    if: always() && (needs.pr-labels.outputs.base_ref == 'maint' || startsWith(needs.pr-labels.outputs.base_ref, 'maint-'))
     steps:
       - name: Check hotfix gates
         run: |
