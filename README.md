@@ -44,4 +44,4 @@ gitworkflow-ci-test/
 
 ## Testing
 
-Full flow test - workflow fixes applied.
+Testing fail gate - merge should be blocked until all gates pass.
