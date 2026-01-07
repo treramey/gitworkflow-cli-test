@@ -44,4 +44,4 @@ gitworkflow-ci-test/
 
 ## Testing
 
-This is a test change for PR validation.
+Testing rulesets and bot app token for CI.
