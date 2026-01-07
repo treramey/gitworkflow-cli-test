@@ -84,13 +84,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TRIGGER_BRANCH: ${{ github.event.pull_request.head.ref }}
+          EVENT_ACTION: ${{ github.event.action }}
+          LABEL_NAME: ${{ github.event.label.name }}
         run: |
           # Get all PRs with the label
           topics=$(gh pr list --label "env: dev" --json headRefName --jq '.[].headRefName' | sort -u)
           
-          # If triggered by label event, ensure triggering branch is included
+          # If triggered by 'env: dev' label event, ensure triggering branch is included
           # (gh pr list may not reflect the label immediately)
-          if [ -n "$TRIGGER_BRANCH" ]; then
+          if [ "$EVENT_ACTION" == "labeled" ] && [ "$LABEL_NAME" == "env: dev" ] && [ -n "$TRIGGER_BRANCH" ]; then
             if ! echo "$topics" | grep -qw "$TRIGGER_BRANCH"; then
               echo "Adding triggering branch: $TRIGGER_BRANCH"
               topics=$(echo -e "$topics\n$TRIGGER_BRANCH" | sort -u)
