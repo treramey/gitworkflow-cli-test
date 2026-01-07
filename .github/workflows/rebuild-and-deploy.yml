@@ -247,7 +247,7 @@ jobs:
               if ! echo "$recent" | grep -q "Promoted to **Dev**"; then
                 commit_sha=$(git rev-parse --short HEAD)
                 timestamp=$(date -u '+%b %-d, %Y %-I:%M%P')
-                gh pr comment "$pr_number" --body "## Promoted to **Dev** environment
+                gh pr comment "$pr_number" --body "## Promoted to **Dev** environment via \`dev\` branch rebuild.
 
           | Branch | Commit | Updated (UTC) |
           |--------|--------|---------------|
@@ -349,7 +349,7 @@ jobs:
           topic="${{ github.event.pull_request.head.ref }}"
           commit_sha=$(git rev-parse --short HEAD)
           timestamp=$(date -u '+%b %-d, %Y %-I:%M%P')
-          gh pr comment ${{ github.event.pull_request.number }} --body "## Promoted to **Staging** environment
+          gh pr comment ${{ github.event.pull_request.number }} --body "## Promoted to **Staging** environment via \`staging\` branch rebuild.
 
           | Branch | Commit | Updated (UTC) |
           |--------|--------|---------------|
