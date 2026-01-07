@@ -26,7 +26,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 │  2. DEVELOP & PUSH                                                              │
 │                                                                                 │
 │     git commit -m "feat: add user authentication"                               │
-│     git devsh -u origin jd/add-user-auth                                         │
+│     git push -u origin jd/add-user-auth                                         │
 │                                                                                 │
 │     Convention: Use conventional commits (feat:, fix:, docs:, etc.)             │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -44,32 +44,31 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                              QUALITY GATES                                      │
 │                                                                                 │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                 │
-│  │   GATE 1        │  │   GATE 2        │  │   GATE 3        │                 │
-│  │   CI Tests      │  │   AI Review     │  │   Human Review  │                 │
-│  │                 │  │                 │  │                 │                 │
-│  │   ✓ Lint        │  │   ✓ Code        │  │   ✓ Architecture│                 │
-│  │   ✓ Format      │  │     quality     │  │   ✓ Business    │                 │
-│  │   ✓ Unit tests  │  │   ✓ Security    │  │     logic       │                 │
-│  │   ✓ Type check  │  │   ✓ Best        │  │   ✓ Approval    │                 │
-│  │   ✓ Build       │  │     practices   │  │                 │                 │
-│  │   ✓ Security    │  │   ✓ Bug         │  │                 │                 │
-│  │     audit       │  │     detection   │  │                 │                 │
-│  │                 │  │                 │  │                 │                 │
-│  │   [Automated]   │  │   [Automated]   │  │   [Manual]      │                 │
-│  │   [Blocking]    │  │   [Advisory]    │  │   [Blocking]    │                 │
-│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘                 │
-│           │                    │                    │                          │
-│           └────────────────────┴────────────────────┘                          │
-│                                │                                               │
-│                                ▼                                               │
-│                    ┌───────────────────────┐                                   │
-│                    │  ALL GATES PASS       │                                   │
-│                    │                       │                                   │
-│                    │  Label added:         │                                   │
-│                    │  "env: dev"      │                                   │
-│                    │                       │                                   │
-│                    └───────────────────────┘                                   │
+│  ┌─────────────────┐  ┌─────────────────┐                                      │
+│  │   GATE 1        │  │   GATE 2        │                                      │
+│  │   CI Tests      │  │   Human Review  │                                      │
+│  │                 │  │                 │                                      │
+│  │   ✓ Type check  │  │   ✓ Architecture│                                      │
+│  │   ✓ Build       │  │   ✓ Business    │                                      │
+│  │                 │  │     logic       │                                      │
+│  │   [Automated]   │  │   ✓ Approval    │                                      │
+│  │   [Blocking]    │  │                 │                                      │
+│  │                 │  │   [Manual]      │                                      │
+│  │   On pass:      │  │   [Required for │                                      │
+│  │   "env: dev"    │  │    merge only]  │                                      │
+│  │   auto-added    │  │                 │                                      │
+│  └────────┬────────┘  └────────┬────────┘                                      │
+│           │                    │                                               │
+│           └────────────────────┘                                               │
+│                     │                                                          │
+│                     ▼                                                          │
+│         ┌───────────────────────┐                                              │
+│         │  CI PASS              │                                              │
+│         │                       │                                              │
+│         │  Label added:         │                                              │
+│         │  "env: dev"           │                                              │
+│         │  (automatic)          │                                              │
+│         └───────────────────────┘                                              │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                        │
                                        ▼
@@ -94,18 +93,20 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 │  └────────────┘  │        │  └────────────┘  │        │  └────────────┘  │
 │                  │        │                  │        │                  │
 │  Entry:          │        │  Entry:          │        │  Entry:          │
-│  Automatic       │        │  Release mgr     │        │  PR merge        │
-│  (rebuild)       │        │  promotes        │        │                  │
+│  CI pass         │        │  Manual label    │        │  PR merge        │
+│  (auto label)    │        │  "env: staging"  │        │                  │
 │                  │        │                  │        │                  │
 │  Includes:       │        │  Includes:       │        │  Includes:       │
-│  Topics with     │        │  Topics ready    │        │  Graduated       │
-│  "env: dev" │        │  for release     │        │  topics          │
-│  label           │        │                  │        │                  │
-│                  │        │                  │        │                  │
+│  Topics with     │        │  Topics with     │        │  Graduated       │
+│  "env: dev" +    │        │  "env: dev" +    │        │  topics          │
+│  "status:        │        │  "env: staging"  │        │                  │
+│   ci-passed"     │        │  + "status:      │        │                  │
+│                  │        │   ci-passed"     │        │                  │
 │                  │        │                  │        │                  │
 │  Rebuilt:        │        │  Rebuilt:        │        │  Never           │
-│  On label add +  │        │  After releases  │        │  rebased         │
-│  every 2 hours   │        │  (or on-demand)  │        │                  │
+│  On label add +  │        │  Daily 6am UTC + │        │  rebased         │
+│  on push +       │        │  manual dispatch │        │                  │
+│  on PR close     │        │                  │        │                  │
 │                  │        │                  │        │                  │
 │  Audience:       │        │  Audience:       │        │  Audience:       │
 │  - Developers    │        │  - QA team       │        │  - Customers     │
@@ -120,10 +121,11 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 │ Alpha Testing    │        │ Staging Testing  │        │ Release          │
 │                  │  ───►  │                  │  ───►  │                  │
 │ "Works well,     │        │ "QA approved,    │        │ - Version bump   │
-│  promote it"     │        │  ready to ship"  │        │ - Changelog      │
-│                  │        │                  │        │ - Git tag        │
-│ Release mgr      │        │ Merge PR to      │        │ - GitHub Release │
-│ promotes to staging │        │ master           │        │ - Notifications  │
+│  add staging     │        │  ready to ship"  │        │ - Changelog      │
+│  label"          │        │                  │        │ - Git tag        │
+│                  │        │ Get PR approval  │        │ - GitHub Release │
+│ User adds        │        │ Merge PR to      │        │ - Notifications  │
+│ "env: staging"   │        │ master           │        │                  │
 └──────────────────┘        └──────────────────┘        └──────────────────┘
 
 
@@ -145,7 +147,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
                         \           \       /
   jd/feature             ●────●────●───●───●  (topic branch)
                          ↑    ↑    ↑   ↑   ↑
-                      create  │  devsh  │  merged to master
+                      create  │  push  │  merged to master
                               │        │
                            merged    fixes
                            to dev
@@ -175,14 +177,14 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   status: ci-passed        │ Automated tests passed           │ CI workflow
   status: ci-failed        │ Automated tests failed           │ CI workflow
   status: needs-review     │ Waiting for human approval       │ CI workflow
-  env: dev                 │ CI + approval, enters dev        │ CI workflow
+  env: dev                 │ CI passed, enters dev            │ CI workflow (auto)
   status: conflict         │ Merge conflict in dev rebuild    │ Rebuild workflow
-  env: staging             │ Promoted to staging              │ Promote workflow
+  env: staging             │ Promoted to staging              │ Manual (user)
   blocked                  │ Do not integrate                 │ Manual
 
-  Merge Gate:
-  - "Merge Gate" check is REQUIRED to merge to master
-  - Requires: CI passed + code review approval + env: staging label
+  Merge Gate (rebuild-gate):
+  - Required to merge to master
+  - Requires: CI passed + env: dev + env: staging + PR approval
 
 
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -191,7 +193,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 
   .github/
   └── workflows/
-      ├── pr-checks.yml              # CI + AI Review + Label management
+      ├── pr-checks.yml              # CI + Label management + Merge gate
       ├── rebuild-and-deploy.yml     # Rebuild dev/staging + deploy to servers
       ├── hotfix.yml                 # Hotfix release + merge maint → master
       └── release.yml                # Triggered on PR merge to master
@@ -203,17 +205,19 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 
   The `rebuild-and-deploy.yml` workflow triggers on:
 
-  1. **Label Event** (instant): When a user manually adds the `env: dev`
-     label to a PR, the workflow triggers immediately.
-     
-     Note: Labels added by workflows (e.g., pr-checks adding the label after
-     approval) do NOT trigger the rebuild - this is a GitHub limitation.
-     For these cases, use manual trigger or wait for the scheduled run.
+  DEV REBUILD:
+  1. **Label Event**: When "env: dev" label is added to a PR
+  2. **Push Event**: When code is pushed to a PR that has "env: dev" + "status: ci-passed" labels
+  3. **PR Closed**: To remove merged/closed topics from dev
+  4. **Manual**: workflow_dispatch with rebuild_dev=true
 
-  2. **Schedule** (every 2 hours): Safety net to catch any missed events,
-     conflict re-checks, and workflow-added labels.
+  STAGING REBUILD:
+  1. **Schedule**: Daily at 6am UTC
+  2. **Manual**: workflow_dispatch with rebuild_staging=true
 
-  3. **Manual** (workflow_dispatch): On-demand via GitHub Actions UI or `gh` CLI.
+  Staging Requirements:
+  - Topic must have ALL THREE labels: "env: dev" + "env: staging" + "status: ci-passed"
+  - Topics without all three are excluded from staging rebuild
 
   Concurrency:
   - Uses `concurrency: { group: rebuild-dev, cancel-in-progress: false }`
@@ -243,11 +247,12 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
           ▼                                                   ▼
   ┌───────────────────┐                             ┌───────────────────┐
   │ ✅ In dev          │                             │ 1. Merge aborted  │
-  │ ✅ Deployed to    │                             │ 2. Label REMOVED: │
-  │    Alpha          │                             │    "env: dev"│
-  │ ✅ Comment posted │                             │                   │
-  │    on PR          │                             │ 3. Label ADDED:   │
-  └───────────────────┘                             │   "status:conflict│
+  │ ✅ Deployed to    │                             │ 2. Labels REMOVED:│
+  │    Alpha          │                             │    "env: dev"     │
+  │ ✅ Comment posted │                             │    "env: staging" │
+  │    on PR          │                             │                   │
+  └───────────────────┘                             │ 3. Label ADDED:   │
+                                                    │   "status:conflict│
                                                     │ 4. Comment posted │
                                                     │    with fix       │
                                                     │    instructions   │
@@ -257,11 +262,11 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
                                                               ▼
                                                     ┌───────────────────┐
                                                     │ Developer rebases │
-                                                    │ and devshes        │
+                                                    │ and pushes        │
                                                     │                   │
                                                     │ git rebase        │
                                                     │   origin/master   │
-                                                    │ git devsh -f       │
+                                                    │ git push -f       │
                                                     └─────────┬─────────┘
                                                               │
                                                               ▼
@@ -273,7 +278,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
                                                     │   "status:        │
                                                     │    conflict"      │
                                                     │   removed         │
-                                                    │   "env: dev" │
+                                                    │   "env: dev"      │
                                                     │   re-added        │
                                                     └─────────┬─────────┘
                                                               │
@@ -290,14 +295,14 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   CONFLICT NOTIFICATION (Posted to PR):
 
   ┌─────────────────────────────────────────────────────────────────────────────┐
-  │  ## ⚠️ Merge Conflict in Integration Branch                                 │
+  │  ## Merge Conflict in Integration Branch                                    │
   │                                                                             │
   │  Your branch `ab/refactor-login` could not be merged into `dev` due to a     │
   │  merge conflict.                                                            │
   │                                                                             │
   │  **What this means:**                                                       │
   │  - Your code is NOT currently deployed to the Alpha server                  │
-  │  - The `env: dev` label has been removed                               │
+  │  - The `env: dev` and `env: staging` labels have been removed               │
   │  - You need to resolve the conflict before your code can be integrated      │
   │                                                                             │
   │  **How to fix:**                                                            │
@@ -307,7 +312,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   │  git fetch origin                                                           │
   │  git rebase origin/master                                                   │
   │  # Resolve conflicts...                                                     │
-  │  git devsh --force-with-lease                                                │
+  │  git push --force-with-lease                                                │
   │  ```                                                                        │
   │                                                                             │
   │  **Conflicting with:** `jd/add-user-auth`                                   │
@@ -328,10 +333,10 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
      - Never commit directly to dev or staging
      - Only master and maint are permanent
 
-  3. QUALITY GATES BEFORE INTEGRATION
-     - CI, AI review, and human review happen on the PR
-     - Only approved code enters dev
-     - Servers always have tested code
+  3. QUALITY GATES
+     - CI runs on PR, must pass before dev integration
+     - Human review required before merge to master (not before dev)
+     - Staging validates before production
 
   4. SINGLE PR WORKFLOW
      - One PR (to master) handles the entire journey
@@ -339,18 +344,19 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
      - PR is merged only when ready for production
 
    5. CLEAR PROMOTION PATH
-       - topic → dev (automatic, after gates pass, "env: dev" label)
-       - dev → staging (manual, release manager promotes, "env: staging" label)
-       - staging → master (PR merge after env: staging label, triggers release)
+       - topic → dev (automatic, after CI pass, "env: dev" label auto-added)
+       - dev → staging (manual, user adds "env: staging" label, daily rebuild)
+       - staging → master (PR merge after all gates pass)
        
-       Merge to master requires all three:
-       - CI passed
-       - Code review approval  
-       - env: staging label (proves staging validation)
+       Merge to master requires all four:
+       - CI passed (status: ci-passed)
+       - In dev (env: dev label)
+       - In staging (env: staging label)
+       - PR approval
 
   6. CONFLICT HANDLING
      - Conflicts during dev rebuild are detected and reported
-     - Label removed, developer notified via PR comment
+     - Both env labels removed, developer notified via PR comment
      - Developer rebases, CI re-runs, label re-added
      - Next rebuild includes the fixed topic
 ```

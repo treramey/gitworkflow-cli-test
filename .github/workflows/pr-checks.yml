@@ -50,63 +50,6 @@ jobs:
         if: success()
         run: echo "passed=true" >> $GITHUB_OUTPUT
 
-  # AI Review job commented out - uncomment and add ANTHROPIC_API_KEY secret to enable
-  # ai-review:
-  #   name: AI Review
-  #   runs-on: ubuntu-latest
-  #   if: |
-  #     github.event_name == 'pull_request' &&
-  #     github.event.action != 'ready_for_review' &&
-  #     github.event.pull_request.draft == false
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-  #     - name: Get changed files
-  #       id: changed
-  #       run: |
-  #         files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | head -50)
-  #         echo "files<<EOF" >> $GITHUB_OUTPUT
-  #         echo "$files" >> $GITHUB_OUTPUT
-  #         echo "EOF" >> $GITHUB_OUTPUT
-  #     - name: Get diff
-  #       id: diff
-  #       run: |
-  #         diff=$(git diff origin/${{ github.base_ref }}...HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' | head -500)
-  #         echo "diff<<EOF" >> $GITHUB_OUTPUT
-  #         echo "$diff" >> $GITHUB_OUTPUT
-  #         echo "EOF" >> $GITHUB_OUTPUT
-  #     - name: AI Code Review
-  #       if: env.ANTHROPIC_API_KEY != ''
-  #       env:
-  #         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #       run: |
-  #         if [ -z "${{ steps.diff.outputs.diff }}" ]; then
-  #           echo "No code changes to review"
-  #           exit 0
-  #         fi
-  #         response=$(curl -s https://api.anthropic.com/v1/messages \
-  #           -H "Content-Type: application/json" \
-  #           -H "x-api-key: $ANTHROPIC_API_KEY" \
-  #           -H "anthropic-version: 2023-06-01" \
-  #           -d '{
-  #             "model": "claude-sonnet-4-20250514",
-  #             "max_tokens": 1024,
-  #             "messages": [{
-  #               "role": "user",
-  #               "content": "Review this code diff. Focus on bugs, security, major improvements. Be brief.\n\nFiles:\n${{ steps.changed.outputs.files }}\n\nDiff:\n${{ steps.diff.outputs.diff }}"
-  #             }]
-  #           }')
-  #         review=$(echo "$response" | jq -r '.content[0].text // "Unable to generate review"')
-  #         gh pr comment ${{ github.event.pull_request.number }} --body "## AI Code Review
-  #
-  #         $review
-  #
-  #         ---
-  #         *Automated review by Claude*"
-
   pr-labels:
     name: pr-labels
     runs-on: ubuntu-latest
@@ -162,7 +105,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BASE_REF: ${{ github.base_ref }}
         run: |
-          # Build labels (consolidated API calls)
+          # Build labels
           if [ "${{ steps.build_status.outputs.passed }}" == "true" ]; then
             gh pr edit $PR_NUMBER --repo $REPO \
               --remove-label "status: ci-failed,status: conflict" \
@@ -173,30 +116,22 @@ jobs:
               --add-label "status: ci-failed" 2>/dev/null || true
           fi
 
-          # Ready for integration (build + approval)
+          # Ready for dev integration (CI pass only, no approval required)
           # Only add env: dev for PRs targeting master (not hotfixes to maint)
           if [ "$BASE_REF" == "master" ]; then
-            if [ "${{ steps.build_status.outputs.passed }}" == "true" ] && \
-               [ "${{ steps.review_status.outputs.approved }}" == "true" ]; then
+            if [ "${{ steps.build_status.outputs.passed }}" == "true" ]; then
               gh pr edit $PR_NUMBER --repo $REPO \
-                --remove-label "status: needs-review" \
                 --add-label "env: dev" 2>/dev/null || true
-            elif [ "${{ steps.review_status.outputs.approved }}" != "true" ]; then
-              gh pr edit $PR_NUMBER --repo $REPO \
-                --add-label "status: needs-review" 2>/dev/null || true
-            else
-              gh pr edit $PR_NUMBER --repo $REPO \
-                --remove-label "status: needs-review" 2>/dev/null || true
             fi
+          fi
+
+          # Track review status for visibility (but not gating dev)
+          if [ "${{ steps.review_status.outputs.approved }}" != "true" ]; then
+            gh pr edit $PR_NUMBER --repo $REPO \
+              --add-label "status: needs-review" 2>/dev/null || true
           else
-            # Hotfix PR to maint - skip dev/staging labels, just track review status
-            if [ "${{ steps.review_status.outputs.approved }}" != "true" ]; then
-              gh pr edit $PR_NUMBER --repo $REPO \
-                --add-label "status: needs-review" 2>/dev/null || true
-            else
-              gh pr edit $PR_NUMBER --repo $REPO \
-                --remove-label "status: needs-review" 2>/dev/null || true
-            fi
+            gh pr edit $PR_NUMBER --repo $REPO \
+              --remove-label "status: needs-review" 2>/dev/null || true
           fi
 
       - name: Check staging status
@@ -211,50 +146,73 @@ jobs:
             echo "in_staging=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update release approval
-        id: release_status
+      - name: Check dev status
+        id: dev_status
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # Approved for release (build + approval + env: staging)
-          if [ "${{ steps.build_status.outputs.passed }}" == "true" ] && \
-             [ "${{ steps.review_status.outputs.approved }}" == "true" ] && \
-             [ "${{ steps.staging_status.outputs.in_staging }}" == "true" ]; then
-            echo "approved=true" >> $GITHUB_OUTPUT
-            echo "All gates passed - approved for release"
+          labels=$(gh api repos/$REPO/pulls/$PR_NUMBER --jq '.labels[].name')
+          if echo "$labels" | grep -qF "env: dev"; then
+            echo "in_dev=true" >> $GITHUB_OUTPUT
           else
-            echo "approved=false" >> $GITHUB_OUTPUT
-            echo "Not ready for release: build=${{ steps.build_status.outputs.passed }} approved=${{ steps.review_status.outputs.approved }} in_staging=${{ steps.staging_status.outputs.in_staging }}"
+            echo "in_dev=false" >> $GITHUB_OUTPUT
           fi
 
     outputs:
-      release_approved: ${{ steps.release_status.outputs.approved }}
       build_passed: ${{ steps.build_status.outputs.passed }}
       approved: ${{ steps.review_status.outputs.approved }}
+      in_dev: ${{ steps.dev_status.outputs.in_dev }}
+      in_staging: ${{ steps.staging_status.outputs.in_staging }}
 
-  # Merge gate for PRs to master (requires staging)
-  require-staging-approval:
-    name: require-staging-approval
+  # Merge gate for PRs to master
+  # Requires: CI passed + env: dev + env: staging + PR approval
+  rebuild-gate:
+    name: rebuild-gate
     runs-on: ubuntu-latest
     needs: [pr-labels]
     if: always() && github.base_ref == 'master'
     steps:
-      - name: Check release approval
+      - name: Check merge requirements
         run: |
-          if [ "${{ needs.pr-labels.outputs.release_approved }}" != "true" ]; then
-            echo "::error::PR not approved for release. Required: build passed + code review approval + env: staging label"
+          echo "Checking merge requirements..."
+          echo "  CI passed: ${{ needs.pr-labels.outputs.build_passed }}"
+          echo "  In dev: ${{ needs.pr-labels.outputs.in_dev }}"
+          echo "  In staging: ${{ needs.pr-labels.outputs.in_staging }}"
+          echo "  Approved: ${{ needs.pr-labels.outputs.approved }}"
+
+          missing=""
+
+          if [ "${{ needs.pr-labels.outputs.build_passed }}" != "true" ]; then
+            missing="$missing\n  - CI must pass (status: ci-passed)"
+          fi
+
+          if [ "${{ needs.pr-labels.outputs.in_dev }}" != "true" ]; then
+            missing="$missing\n  - Must be in dev (env: dev label)"
+          fi
+
+          if [ "${{ needs.pr-labels.outputs.in_staging }}" != "true" ]; then
+            missing="$missing\n  - Must be in staging (env: staging label)"
+          fi
+
+          if [ "${{ needs.pr-labels.outputs.approved }}" != "true" ]; then
+            missing="$missing\n  - PR approval required"
+          fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::PR not ready to merge. Missing requirements:"
+            echo -e "$missing"
             echo ""
             echo "Flow to merge:"
-            echo "  1. Build must pass (type-check + build)"
-            echo "  2. Get code review approval"
-            echo "  3. Wait for 'env: dev' label (auto-added)"
-            echo "  4. Topic merges to dev on next rebuild"
-            echo "  5. Release manager promotes to staging"
-            echo "  6. 'env: staging' label added"
-            echo "  7. Merge allowed"
+            echo "  1. CI must pass (auto-adds env: dev)"
+            echo "  2. Topic merges to dev on next rebuild"
+            echo "  3. Manually add env: staging label when ready"
+            echo "  4. Topic merges to staging on daily rebuild (or manual trigger)"
+            echo "  5. Get PR approval"
+            echo "  6. Merge allowed"
             exit 1
           fi
-          echo "PR approved for release - merge allowed"
+
+          echo "All merge requirements met"
 
   # Merge gate for hotfix PRs to maint (CI + approval only, no staging)
   require-hotfix-approval:

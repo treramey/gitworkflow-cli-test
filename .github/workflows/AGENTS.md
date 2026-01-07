@@ -9,8 +9,7 @@ Gitworkflow CI/CD: ephemeral integration branches rebuilt by CI, label-driven pr
 | Task | File | Notes |
 |------|------|-------|
 | PR validation | `pr-checks.yml` | Build + labels + merge gate |
-| Dev/staging rebuild | `rebuild-and-deploy.yml` | Triggered by labels, schedule, dispatch |
-| Manual promotion | `promote-to-staging.yml` | Release manager promotes topic |
+| Dev/staging rebuild | `rebuild-and-deploy.yml` | Triggered by labels, push, schedule, dispatch |
 | Release automation | `release.yml` | On PR merge to master |
 | Hotfix release | `hotfix.yml` | On PR merge to maint/maint-X.Y |
 
@@ -18,9 +17,9 @@ Gitworkflow CI/CD: ephemeral integration branches rebuilt by CI, label-driven pr
 
 | Workflow | Triggers |
 |----------|----------|
-| pr-checks | PR to master/maint/maint-* (opened/sync/review) |
-| rebuild-and-deploy | `env: dev` label, schedule (2h), dispatch, PR closed |
-| promote-to-staging | Manual dispatch only |
+| pr-checks | PR to master/maint/maint-* (opened/sync/review/labeled) |
+| rebuild-and-deploy (dev) | `env: dev` label added, push to labeled PR, PR closed, manual dispatch |
+| rebuild-and-deploy (staging) | Daily cron (6am UTC), manual dispatch |
 | release | PR merged to master |
 | hotfix | PR merged to maint or maint-* |
 
@@ -32,8 +31,8 @@ Gitworkflow CI/CD: ephemeral integration branches rebuilt by CI, label-driven pr
 | `status: ci-failed` | Build failed | pr-checks |
 | `status: needs-review` | Awaiting approval | pr-checks |
 | `status: conflict` | Merge conflict in rebuild | rebuild-and-deploy |
-| `env: dev` | Ready for alpha | pr-checks (CI + approval) |
-| `env: staging` | Promoted to staging | promote-to-staging |
+| `env: dev` | CI passed, ready for alpha | pr-checks (auto on CI pass) |
+| `env: staging` | Promoted to staging | Manual (user adds) |
 
 ## MAINT BRANCHES
 
@@ -66,23 +65,25 @@ Gitworkflow CI/CD: ephemeral integration branches rebuilt by CI, label-driven pr
 
 ## MERGE GATES
 
-**PRs to master** (`require-staging-approval`):
+**PRs to master** (`rebuild-gate`):
 1. `status: ci-passed`
-2. Code review approval
+2. `env: dev` label
 3. `env: staging` label
+4. PR approval
 
 **Hotfix PRs to maint** (`require-hotfix-approval`):
 1. `status: ci-passed`
-2. Code review approval
+2. PR approval
 3. NO staging requirement (bypass dev/staging)
 
 ## CONFLICT HANDLING
 
-On merge conflict during rebuild:
+On merge conflict during dev rebuild:
 1. Abort merge for that topic
-2. Remove `env: dev`, add `status: conflict`
-3. Post fix instructions to PR
-4. Continue with other topics
+2. Remove `env: dev` AND `env: staging` labels
+3. Add `status: conflict` label
+4. Post fix instructions to PR
+5. Continue with other topics
 
 ## HOTFIX FLOW
 
@@ -113,9 +114,9 @@ rebuild-dev → build-dev → deploy-alpha
                 ↓
             dev-build artifact (1 day retention)
 
-promote-to-staging/rebuild-staging → build-staging → deploy-staging
-                                          ↓
-                                  staging-build artifact
+rebuild-staging → build-staging → deploy-staging
+                       ↓
+               staging-build artifact
 
 release → build-release → deploy-production
               ↓
@@ -128,7 +129,7 @@ hotfix (maint) → build-hotfix → deploy-production
 
 ## NOTES
 
-- **AI review**: Dormant job in pr-checks (uncomment + add `ANTHROPIC_API_KEY`)
 - **Deploy commands**: All `echo` placeholders - implement actual deployment
 - **Maint merge**: release.yml auto-merges maint→master before release
 - **Maint preservation**: On minor/major release, old maint becomes maint-X.Y
+- **Staging rebuild**: Daily at 6am UTC, requires all three labels (env: dev + env: staging + status: ci-passed)
