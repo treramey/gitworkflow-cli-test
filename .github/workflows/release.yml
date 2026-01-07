@@ -1,9 +1,8 @@
 name: Release
 
 on:
-  pull_request:
+  push:
     branches: [master]
-    types: [closed]
 
 permissions:
   contents: write
@@ -19,7 +18,6 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true
     outputs:
       version: ${{ steps.bump.outputs.version }}
       tag: ${{ steps.bump.outputs.tag }}
