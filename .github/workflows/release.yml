@@ -211,7 +211,7 @@ jobs:
           git fetch origin dev
 
           # Get labeled topics (still open)
-          labeled_topics=$(gh pr list --label "status: ready" --json headRefName --jq '.[].headRefName' | sort -u || true)
+          labeled_topics=$(gh pr list --label "env: dev" --json headRefName --jq '.[].headRefName' | sort -u || true)
 
           # Reset dev to master
           git checkout -B dev origin/master

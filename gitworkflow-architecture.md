@@ -67,7 +67,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 │                    │  ALL GATES PASS       │                                   │
 │                    │                       │                                   │
 │                    │  Label added:         │                                   │
-│                    │  "status: ready"      │                                   │
+│                    │  "env: dev"      │                                   │
 │                    │                       │                                   │
 │                    └───────────────────────┘                                   │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -99,7 +99,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 │                  │        │                  │        │                  │
 │  Includes:       │        │  Includes:       │        │  Includes:       │
 │  Topics with     │        │  Topics ready    │        │  Graduated       │
-│  "status: ready" │        │  for release     │        │  topics          │
+│  "env: dev" │        │  for release     │        │  topics          │
 │  label           │        │                  │        │                  │
 │                  │        │                  │        │                  │
 │                  │        │                  │        │                  │
@@ -175,7 +175,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   status: ci-passed        │ Automated tests passed           │ CI workflow
   status: ci-failed        │ Automated tests failed           │ CI workflow
   status: needs-review     │ Waiting for human approval       │ CI workflow
-  status: ready            │ CI + approval, enters dev        │ CI workflow
+  env: dev            │ CI + approval, enters dev        │ CI workflow
   status: conflict         │ Merge conflict in dev rebuild    │ Rebuild workflow
   env: staging             │ Promoted to staging              │ Promote workflow
   env: qa                  │ Ready to merge to master         │ CI workflow
@@ -205,7 +205,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
 
   The `rebuild-and-deploy.yml` workflow triggers on:
 
-  1. **Label Event** (instant): When a user manually adds the `status: ready`
+  1. **Label Event** (instant): When a user manually adds the `env: dev`
      label to a PR, the workflow triggers immediately.
      
      Note: Labels added by workflows (e.g., pr-checks adding the label after
@@ -246,7 +246,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   ┌───────────────────┐                             ┌───────────────────┐
   │ ✅ In dev          │                             │ 1. Merge aborted  │
   │ ✅ Deployed to    │                             │ 2. Label REMOVED: │
-  │    Alpha          │                             │    "status: ready"│
+  │    Alpha          │                             │    "env: dev"│
   │ ✅ Comment posted │                             │                   │
   │    on PR          │                             │ 3. Label ADDED:   │
   └───────────────────┘                             │   "status:conflict│
@@ -275,7 +275,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
                                                     │   "status:        │
                                                     │    conflict"      │
                                                     │   removed         │
-                                                    │   "status: ready" │
+                                                    │   "env: dev" │
                                                     │   re-added        │
                                                     └─────────┬─────────┘
                                                               │
@@ -299,7 +299,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
   │                                                                             │
   │  **What this means:**                                                       │
   │  - Your code is NOT currently deployed to the Alpha server                  │
-  │  - The `status: ready` label has been removed                               │
+  │  - The `env: dev` label has been removed                               │
   │  - You need to resolve the conflict before your code can be integrated      │
   │                                                                             │
   │  **How to fix:**                                                            │
@@ -341,7 +341,7 @@ This document describes a gitworkflow-based CI/CD pipeline with quality gates, i
      - PR is merged only when ready for production
 
    5. CLEAR PROMOTION PATH
-       - topic → dev (automatic, after gates pass, "status: ready" label)
+       - topic → dev (automatic, after gates pass, "env: dev" label)
        - dev → staging (manual, release manager promotes, "env: staging" label)
        - staging → master (PR merge after "env: qa" label, triggers release)
        

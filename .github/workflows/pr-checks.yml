@@ -176,7 +176,7 @@ jobs:
 
           # Ready for integration (build + approval)
           if [ "${{ steps.build_status.outputs.passed }}" == "true" ] && [ "${{ steps.review_status.outputs.approved }}" == "true" ]; then
-            gh pr edit $PR_NUMBER --repo $REPO --add-label "status: ready"
+            gh pr edit $PR_NUMBER --repo $REPO --add-label "env: dev"
             gh pr edit $PR_NUMBER --repo $REPO --remove-label "status: needs-review" 2>/dev/null || true
           else
             echo "Not all gates passed yet"
@@ -229,7 +229,7 @@ jobs:
             echo "Flow to merge:"
             echo "  1. Build must pass (type-check + build)"
             echo "  2. Get code review approval"
-            echo "  3. Wait for 'status: ready' label (auto-added)"
+            echo "  3. Wait for 'env: dev' label (auto-added)"
             echo "  4. Topic merges to dev on next rebuild"
             echo "  5. Release manager promotes to staging"
             echo "  6. 'env: staging' label added"
