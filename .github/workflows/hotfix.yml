@@ -143,9 +143,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hotfix-build
-          path: |
-            apps/web/.output/
-            apps/web/.vinxi/
+          path: apps/web/dist/
           retention-days: 1
 
   deploy-production:
