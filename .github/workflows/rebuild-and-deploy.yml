@@ -47,7 +47,8 @@ jobs:
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.action == 'closed') ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'status: ready')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'status: ready') ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'env: staging')
     steps:
       - run: echo "Workflow triggered by valid event"
     outputs:
@@ -292,6 +293,63 @@ jobs:
           # - kubectl apply
           echo "Deployment placeholder - configure your deployment method"
 
+  promote-to-staging:
+    name: Promote to staging
+    runs-on: ubuntu-latest
+    needs: should-run
+    if: |
+      github.event_name == 'pull_request' && 
+      github.event.action == 'labeled' && 
+      github.event.label.name == 'env: staging'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "$GIT_AUTHOR_NAME"
+          git config user.email "$GIT_AUTHOR_EMAIL"
+
+      - name: Merge topic to staging
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          topic="${{ github.event.pull_request.head.ref }}"
+          
+          git fetch origin staging master
+          git checkout staging
+          
+          # Check if already in staging
+          if git merge-base --is-ancestor "origin/$topic" HEAD 2>/dev/null; then
+            echo "Branch '$topic' is already in staging"
+            exit 0
+          fi
+          
+          # Check if already in master (graduated)
+          if git merge-base --is-ancestor "origin/$topic" origin/master 2>/dev/null; then
+            echo "Branch '$topic' is already in master (graduated)"
+            exit 0
+          fi
+          
+          # Merge topic to staging
+          echo "Merging $topic to staging..."
+          git merge --no-ff "origin/$topic" -m "Merge branch '$topic' into staging"
+          git push origin staging
+
+      - name: Post comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "Promoted to **staging** branch.
+
+          - Topic: \`${{ github.event.pull_request.head.ref }}\`
+          - Time: $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          Deploying to Staging environment now..."
+
   rebuild-staging:
     name: Rebuild staging
     runs-on: ubuntu-latest
@@ -330,7 +388,7 @@ jobs:
           # Reset staging to master
           git checkout -B staging origin/master
 
-          # Re-merge only topics that have open PRs with in-staging label
+          # Re-merge only topics that have open PRs with env: staging label
           for topic in $open_staging_topics; do
             if [ -z "$topic" ]; then continue; fi
             if git rev-parse --verify "origin/$topic" &>/dev/null; then
@@ -350,14 +408,12 @@ jobs:
   deploy-staging:
     name: Deploy Staging
     runs-on: ubuntu-latest
-    needs: rebuild-staging
+    needs: [promote-to-staging, rebuild-staging]
     if: |
-      needs.rebuild-staging.result == 'success' &&
-      (github.event.inputs.deploy_staging == 'true' ||
-       (github.event_name == 'pull_request' && 
-        github.event.action == 'closed' && 
-        github.event.pull_request.merged == false &&
-        contains(github.event.pull_request.labels.*.name, 'env: staging')))
+      always() &&
+      (needs.promote-to-staging.result == 'success' ||
+       needs.rebuild-staging.result == 'success' ||
+       github.event.inputs.deploy_staging == 'true')
     environment:
       name: staging
       url: https://staging.yourapp.com
