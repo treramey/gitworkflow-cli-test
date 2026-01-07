@@ -251,7 +251,7 @@ jobs:
 
           | Branch | Status | Commit | Updated (UTC) |
           |--------|--------|--------|---------------|
-          | \`$topic\` | ✅ Deployed | \`$commit_sha\` | $timestamp |"
+          | \`$topic\` | 🟢 Deployed | \`$commit_sha\` | $timestamp |"
               fi
             fi
           done
@@ -353,7 +353,7 @@ jobs:
 
           | Branch | Status | Commit | Updated (UTC) |
           |--------|--------|--------|---------------|
-          | \`$topic\` | ✅ Deployed | \`$commit_sha\` | $timestamp |"
+          | \`$topic\` | 🟢 Deployed | \`$commit_sha\` | $timestamp |"
 
   rebuild-staging:
     name: Rebuild staging
