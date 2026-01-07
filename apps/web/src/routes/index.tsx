@@ -31,6 +31,12 @@ function HomeComponent() {
             Final E2E test - full release flow
           </p>
         </section>
+        <section className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <h2 className="mb-2 font-medium text-blue-900">New Feature</h2>
+          <p className="text-sm text-blue-700">
+            Demo feature for gitworkflow CI/CD pipeline demonstration
+          </p>
+        </section>
       </div>
     </div>
   );
