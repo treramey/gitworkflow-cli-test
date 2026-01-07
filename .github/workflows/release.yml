@@ -16,17 +16,24 @@ env:
 
 jobs:
   release:
-    name: Release
+    name: release
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}
       tag: ${{ steps.bump.outputs.tag }}
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure git
         run: |
@@ -191,7 +198,7 @@ jobs:
 
       - name: Rebuild staging (remove graduated topics)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git fetch origin staging
 
@@ -224,7 +231,7 @@ jobs:
 
       - name: Rebuild dev (remove graduated topics)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git fetch origin dev
 
@@ -267,14 +274,14 @@ jobs:
 
       - name: Create GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh release create "${{ steps.bump.outputs.tag }}" \
             --title "Release ${{ steps.bump.outputs.version }}" \
             --notes "${{ steps.changelog.outputs.changelog }}"
 
   build-release:
-    name: Build release
+    name: build-release
     runs-on: ubuntu-latest
     needs: release
     steps:
@@ -304,13 +311,20 @@ jobs:
           retention-days: 1
 
   deploy-production:
-    name: Deploy Production
+    name: deploy-production
     runs-on: ubuntu-latest
     needs: [release, build-release]
     environment:
       name: production
       url: https://yourapp.com
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
@@ -325,7 +339,7 @@ jobs:
 
       - name: Post-deployment notification
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           echo "Release ${{ needs.release.outputs.version }} deployed to production"
           # Add Slack/Discord notification here if needed

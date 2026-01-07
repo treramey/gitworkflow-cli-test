@@ -157,10 +157,18 @@ jobs:
             echo "approved=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Get PR base ref
+        id: pr_info
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          base_ref=$(gh api repos/$REPO/pulls/$PR_NUMBER --jq '.base.ref')
+          echo "base_ref=$base_ref" >> $GITHUB_OUTPUT
+
       - name: Update labels
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ steps.pr_info.outputs.base_ref }}
         run: |
           # Build labels (consolidated API calls)
           if [ "${{ steps.build_status.outputs.passed }}" == "true" ]; then
@@ -231,13 +239,14 @@ jobs:
       release_approved: ${{ steps.release_status.outputs.approved }}
       build_passed: ${{ steps.build_status.outputs.passed }}
       approved: ${{ steps.review_status.outputs.approved }}
+      base_ref: ${{ steps.pr_info.outputs.base_ref }}
 
   # Merge gate for PRs to master (requires staging)
   require-staging-approval:
     name: require-staging-approval
     runs-on: ubuntu-latest
     needs: [pr-labels]
-    if: always() && github.base_ref == 'master' && needs.pr-labels.outputs.release_approved == 'true'
+    if: always() && needs.pr-labels.outputs.base_ref == 'master' && needs.pr-labels.outputs.release_approved == 'true'
     steps:
       - name: Release approved
         run: echo "PR approved for release - merge allowed"
@@ -247,7 +256,7 @@ jobs:
     name: merge-status
     runs-on: ubuntu-latest
     needs: [pr-labels]
-    if: always() && github.base_ref == 'master'
+    if: always() && needs.pr-labels.outputs.base_ref == 'master'
     steps:
       - name: Show merge status
         run: |
@@ -275,7 +284,7 @@ jobs:
     name: require-hotfix-approval
     runs-on: ubuntu-latest
     needs: [pr-labels]
-    if: always() && (github.base_ref == 'maint' || startsWith(github.base_ref, 'maint-'))
+    if: always() && (needs.pr-labels.outputs.base_ref == 'maint' || startsWith(needs.pr-labels.outputs.base_ref, 'maint-'))
     steps:
       - name: Check hotfix gates
         run: |

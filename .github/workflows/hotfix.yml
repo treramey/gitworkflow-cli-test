@@ -19,7 +19,7 @@ env:
 
 jobs:
   hotfix-release:
-    name: Hotfix Release
+    name: hotfix-release
     runs-on: ubuntu-latest
     if: github.event.pull_request.merged == true
     outputs:
@@ -27,12 +27,19 @@ jobs:
       tag: ${{ steps.bump.outputs.tag }}
       target_branch: ${{ github.base_ref }}
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.base_ref }}
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure git
         run: |
@@ -69,7 +76,7 @@ jobs:
 
       - name: Create GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh release create "${{ steps.bump.outputs.tag }}" \
             --title "Hotfix ${{ steps.bump.outputs.version }}" \
@@ -81,18 +88,25 @@ jobs:
           PR: #${{ github.event.pull_request.number }}"
 
   merge-to-master:
-    name: Merge to master
+    name: merge-to-master
     runs-on: ubuntu-latest
     needs: hotfix-release
     # Only merge maint → master, not maint-X.Y (older release lines stay separate)
     if: github.base_ref == 'maint'
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
       - name: Checkout master
         uses: actions/checkout@v4
         with:
           ref: master
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure git
         run: |
@@ -119,7 +133,7 @@ jobs:
           git push origin master
 
   build-hotfix:
-    name: Build hotfix
+    name: build-hotfix
     runs-on: ubuntu-latest
     needs: hotfix-release
     steps:
@@ -148,8 +162,8 @@ jobs:
             apps/web/.vinxi/
           retention-days: 1
 
-  deploy-production:
-    name: Deploy hotfix
+  deploy-hotfix:
+    name: deploy-hotfix
     runs-on: ubuntu-latest
     needs: [hotfix-release, build-hotfix]
     # Only deploy current maint, not maint-X.Y (older release lines)
@@ -158,6 +172,13 @@ jobs:
       name: production
       url: https://yourapp.com
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
@@ -172,7 +193,7 @@ jobs:
 
       - name: Post-deployment notification
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           echo "Hotfix ${{ needs.hotfix-release.outputs.version }} deployed to production"
           # Add Slack/Discord notification here if needed
