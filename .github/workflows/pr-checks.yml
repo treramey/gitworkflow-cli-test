@@ -243,25 +243,17 @@ jobs:
 
   # Merge gate for PRs to master (requires staging)
   # 
-  # DESIGN: Creates a separate check "Merge Gate" via API that persists across workflow runs.
-  # This job always succeeds (so multiple runs don't create multiple failing checks),
-  # but the "Merge Gate" check only shows success when env: staging label exists.
+  # DESIGN: This job creates a Check Run via API (not workflow job status) to avoid
+  # accumulating multiple failed checks. The Check Run is updated each time, not created new.
   require-staging-approval:
     name: require-staging-approval
     runs-on: ubuntu-latest
     needs: [pr-labels]
     if: always() && needs.pr-labels.outputs.base_ref == 'master'
     steps:
-      - name: Generate GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.BOT_APP_ID }}
-          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
-
-      - name: Update merge gate status
+      - name: Update merge gate check
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_APPROVED: ${{ needs.pr-labels.outputs.release_approved }}
           BUILD_PASSED: ${{ needs.pr-labels.outputs.build_passed }}
           REVIEW_APPROVED: ${{ needs.pr-labels.outputs.approved }}
@@ -269,24 +261,28 @@ jobs:
           sha="${{ github.event.pull_request.head.sha }}"
           
           if [ "$RELEASE_APPROVED" == "true" ]; then
-            state="success"
-            description="Ready to merge - all gates passed"
+            conclusion="success"
+            title="Ready to merge"
+            summary="All gates passed - build, review, and staging validation complete"
           else
-            state="pending"
-            description="Waiting: build=$BUILD_PASSED review=$REVIEW_APPROVED staging=false"
+            conclusion="action_required"
+            title="Waiting for staging"
+            summary="Merge blocked: build=$BUILD_PASSED review=$REVIEW_APPROVED staging=false"
           fi
           
-          # Update commit status (not check run) - this creates/updates a single status
-          gh api repos/${{ github.repository }}/statuses/$sha \
+          # Create check run via API - uses same name so updates existing
+          gh api repos/${{ github.repository }}/check-runs \
             -X POST \
-            -f state="$state" \
-            -f context="Merge Gate" \
-            -f description="$description"
+            -f name="Merge Gate" \
+            -f head_sha="$sha" \
+            -f status="completed" \
+            -f conclusion="$conclusion" \
+            -f "output[title]=$title" \
+            -f "output[summary]=$summary"
           
-          echo "Merge Gate status: $state - $description"
+          echo "Merge Gate: $conclusion - $title"
           
-          # Always exit 0 - this job's success/failure is informational only
-          # The actual gate is the "Merge Gate" commit status
+          # Job always succeeds - gate is the Check Run conclusion, not this job
 
   # Status summary (informational, never fails)
   merge-status:
