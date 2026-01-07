@@ -44,7 +44,8 @@ Gitworkflow CI/CD test bed - TypeScript monorepo (Turborepo + Bun) with TanStack
 | Branch | Purpose | Rebuilt |
 |--------|---------|---------|
 | `master` | Production, permanent | Never |
-| `maint` | Hotfixes | After releases |
+| `maint` | Current hotfix line | After releases |
+| `maint-X.Y` | Older supported releases (e.g., `maint-1.2`) | Manual patches |
 | `staging` | Beta/QA | On promotion |
 | `dev` | Alpha/proposed | Every 2h + on label |
 

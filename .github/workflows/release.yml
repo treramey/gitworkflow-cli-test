@@ -158,8 +158,34 @@ jobs:
           git commit -m "chore: release v${{ steps.bump.outputs.version }}"
           git tag -a "${{ steps.bump.outputs.tag }}" -m "Release ${{ steps.bump.outputs.version }}"
 
-      - name: Update maint to match master
-        run: git push origin master:maint --force
+      - name: Preserve and update maint branches
+        run: |
+          # Get previous version tag (before this release)
+          last_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          # Skip maint-X.Y creation on first release (no previous tag)
+          if [ -z "$last_tag" ]; then
+            echo "First release - no previous maint to preserve"
+            git push origin master:maint --force-with-lease
+            exit 0
+          fi
+          
+          # Extract X.Y from previous version (e.g., v1.2.3 → 1.2)
+          prev_xy=$(echo "$last_tag" | sed 's/^v//' | cut -d. -f1,2)
+          
+          # Get new X.Y from this release
+          new_xy=$(echo "${{ steps.bump.outputs.version }}" | cut -d. -f1,2)
+          
+          # If minor/major bump (X.Y changed), preserve old maint as maint-X.Y
+          if [ "$prev_xy" != "$new_xy" ]; then
+            echo "Minor/major release: preserving maint as maint-$prev_xy"
+            git push origin origin/maint:refs/heads/maint-$prev_xy 2>/dev/null || echo "maint-$prev_xy already exists or maint doesn't exist"
+          else
+            echo "Patch release: maint-$prev_xy unchanged"
+          fi
+          
+          # Update maint to point to new release (--force-with-lease for safety)
+          git push origin master:maint --force-with-lease
 
       - name: Push master with tags
         run: |

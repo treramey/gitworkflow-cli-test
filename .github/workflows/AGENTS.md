@@ -33,6 +33,20 @@ Gitworkflow CI/CD: ephemeral integration branches rebuilt by CI, label-driven pr
 | `env: dev` | Ready for alpha | pr-checks (CI + approval) |
 | `env: staging` | Promoted to staging | promote-to-staging |
 
+## MAINT BRANCHES
+
+| Branch | Purpose |
+|--------|---------|
+| `maint` | Current release line, receives hotfixes |
+| `maint-X.Y` | Older supported release lines (e.g., `maint-1.2`) |
+
+**Lifecycle:**
+- `v1.2.0` release → `maint` moves to that commit
+- `v1.3.0` release → old `maint` preserved as `maint-1.2`, new `maint` at v1.3.0
+- Patch releases (`v1.2.1`) cut from respective maint branch
+
+**Manual cleanup only** - delete `maint-X.Y` when release line reaches EOL.
+
 ## CONVENTIONS
 
 - **Bot token**: Use `BOT_APP_ID`/`BOT_PRIVATE_KEY` for label operations (GITHUB_TOKEN can't trigger workflows)
@@ -84,3 +98,4 @@ release → build-release → deploy-production
 - **AI review**: Dormant job in pr-checks (uncomment + add `ANTHROPIC_API_KEY`)
 - **Deploy commands**: All `echo` placeholders - implement actual deployment
 - **Maint merge**: release.yml auto-merges maint→master before release
+- **Maint preservation**: On minor/major release, old maint becomes maint-X.Y
