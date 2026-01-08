@@ -294,34 +294,41 @@ jobs:
               timestamp=$(date -u '+%b %-d, %Y %-I:%M%P')
               
               # Find existing env status comment by marker (sort by id to handle race condition)
-              comment_id=$(gh api "repos/${{ github.repository }}/issues/${pr_number}/comments" \
-                --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | sort -n | head -1)
+              comment_data=$(gh api "repos/${{ github.repository }}/issues/${pr_number}/comments" \
+                --jq "[.[] | select(.body | contains(\"$MARKER\"))] | sort_by(.id) | first // empty")
+              comment_id=$(echo "$comment_data" | jq -r '.id // empty')
+              existing_body=$(echo "$comment_data" | jq -r '.body // empty')
               
-              # Check if staging label exists on this PR
+              # Build new dev row
+              dev_row="| dev | \`$topic\` | \`$commit_sha\` | $timestamp |"
+              
+              # Check if staging label exists - if not, remove staging row
               has_staging=$(gh pr view "$pr_number" --json labels --jq '[.labels[].name] | any(. == "env: staging")')
               
-              if [ "$has_staging" == "true" ]; then
-                env_list="dev, staging"
-              else
-                env_list="dev"
+              # Extract existing staging row (preserve if has_staging label)
+              staging_row=""
+              if [ "$has_staging" == "true" ] && [ -n "$existing_body" ]; then
+                staging_row=$(echo "$existing_body" | grep -E '^\| staging \|' || true)
               fi
               
-              comment_body=$(cat <<EOF
-          ${MARKER}
+              # Build table rows (dev first, then staging if exists)
+              table_rows="$dev_row"
+              if [ -n "$staging_row" ]; then
+                table_rows="$table_rows
+          $staging_row"
+              fi
+              
+              comment_body="${MARKER}
           ## Environment Status
 
           | Env | Branch | Commit | Updated (UTC) |
           |-----|--------|--------|---------------|
-          | ${env_list} | \`$topic\` | \`$commit_sha\` | $timestamp |
-          EOF
-          )
+          ${table_rows}"
 
               if [ -n "$comment_id" ]; then
-                # Update existing comment
                 gh api "repos/${{ github.repository }}/issues/comments/${comment_id}" \
                   -X PATCH -f body="$comment_body"
               else
-                # Create new comment
                 gh pr comment "$pr_number" --body "$comment_body"
               fi
             fi
@@ -449,28 +456,39 @@ jobs:
               timestamp=$(date -u '+%b %-d, %Y %-I:%M%P')
               
               # Find existing env status comment by marker (sort by id to handle race condition)
-              comment_id=$(gh api "repos/${{ github.repository }}/issues/${pr_number}/comments" \
-                --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | sort -n | head -1)
+              comment_data=$(gh api "repos/${{ github.repository }}/issues/${pr_number}/comments" \
+                --jq "[.[] | select(.body | contains(\"$MARKER\"))] | sort_by(.id) | first // empty")
+              comment_id=$(echo "$comment_data" | jq -r '.id // empty')
+              existing_body=$(echo "$comment_data" | jq -r '.body // empty')
               
-              # Staging always has both labels so env is "dev, staging"
-              env_list="dev, staging"
+              # Build new staging row
+              staging_row="| staging | \`$topic\` | \`$commit_sha\` | $timestamp |"
               
-              comment_body=$(cat <<EOF
-          ${MARKER}
+              # Extract existing dev row (always preserve - staging requires dev label)
+              dev_row=""
+              if [ -n "$existing_body" ]; then
+                dev_row=$(echo "$existing_body" | grep -E '^\| dev \|' || true)
+              fi
+              
+              # Build table rows (dev first, then staging)
+              if [ -n "$dev_row" ]; then
+                table_rows="$dev_row
+          $staging_row"
+              else
+                table_rows="$staging_row"
+              fi
+              
+              comment_body="${MARKER}
           ## Environment Status
 
           | Env | Branch | Commit | Updated (UTC) |
           |-----|--------|--------|---------------|
-          | ${env_list} | \`$topic\` | \`$commit_sha\` | $timestamp |
-          EOF
-          )
+          ${table_rows}"
 
               if [ -n "$comment_id" ]; then
-                # Update existing comment
                 gh api "repos/${{ github.repository }}/issues/comments/${comment_id}" \
                   -X PATCH -f body="$comment_body"
               else
-                # Create new comment
                 gh pr comment "$pr_number" --body "$comment_body"
               fi
             fi
