@@ -285,21 +285,44 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          MARKER="<!-- env-status-comment -->"
+          
           for topic in ${{ steps.rebuild.outputs.merged_topics }}; do
             pr_number=$(gh pr list --head "$topic" --json number --jq '.[0].number')
             if [ -n "$pr_number" ]; then
-              # Check last 5 comments to avoid spam
-              recent=$(gh pr view "$pr_number" --json comments --jq '[.comments[-5:][].body] | join("\n")' 2>/dev/null || echo "")
-              env_name="Dev"
-              branch_name="dev"
-              if ! echo "$recent" | grep -q "Promoted to **$env_name**"; then
-                commit_sha=$(git rev-parse --short HEAD)
-                timestamp=$(date -u '+%b %-d, %Y %-I:%M%P')
-                gh pr comment "$pr_number" --body "Promoted to **$env_name** environment via \`$branch_name\` branch rebuild.
+              commit_sha=$(git rev-parse --short HEAD)
+              timestamp=$(date -u '+%b %-d, %Y %-I:%M%P')
+              
+              # Find existing env status comment by marker
+              comment_id=$(gh api "repos/${{ github.repository }}/issues/${pr_number}/comments" \
+                --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
+              
+              # Check if staging label exists on this PR
+              has_staging=$(gh pr view "$pr_number" --json labels --jq '[.labels[].name] | any(. == "env: staging")')
+              
+              if [ "$has_staging" == "true" ]; then
+                env_list="dev, staging"
+              else
+                env_list="dev"
+              fi
+              
+              comment_body=$(cat <<EOF
+          ${MARKER}
+          ## Environment Status
 
-          | Branch | Commit | Updated (UTC) |
-          |--------|--------|---------------|
-          | \`$topic\` | \`$commit_sha\` | $timestamp |"
+          | Env | Branch | Commit | Updated (UTC) |
+          |-----|--------|--------|---------------|
+          | ${env_list} | \`$topic\` | \`$commit_sha\` | $timestamp |
+          EOF
+          )
+
+              if [ -n "$comment_id" ]; then
+                # Update existing comment
+                gh api "repos/${{ github.repository }}/issues/comments/${comment_id}" \
+                  -X PATCH -f body="$comment_body"
+              else
+                # Create new comment
+                gh pr comment "$pr_number" --body "$comment_body"
               fi
             fi
           done
@@ -416,23 +439,39 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          MARKER="<!-- env-status-comment -->"
           staging_topics=$(gh pr list --label "env: dev" --label "env: staging" --label "status: ci-passed" --state open --json headRefName --jq '.[].headRefName' | sort -u || true)
           
           for topic in $staging_topics; do
             pr_number=$(gh pr list --head "$topic" --json number --jq '.[0].number')
             if [ -n "$pr_number" ]; then
-              # Check last 5 comments to avoid spam
-              recent=$(gh pr view "$pr_number" --json comments --jq '[.comments[-5:][].body] | join("\n")' 2>/dev/null || echo "")
-              env_name="Staging"
-              branch_name="staging"
-              if ! echo "$recent" | grep -q "Promoted to **$env_name**"; then
-                commit_sha=$(git rev-parse --short HEAD)
-                timestamp=$(date -u '+%b %-d, %Y %-I:%M%P')
-                gh pr comment "$pr_number" --body "Promoted to **$env_name** environment via \`$branch_name\` branch rebuild.
+              commit_sha=$(git rev-parse --short HEAD)
+              timestamp=$(date -u '+%b %-d, %Y %-I:%M%P')
+              
+              # Find existing env status comment by marker
+              comment_id=$(gh api "repos/${{ github.repository }}/issues/${pr_number}/comments" \
+                --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
+              
+              # Staging always has both labels so env is "dev, staging"
+              env_list="dev, staging"
+              
+              comment_body=$(cat <<EOF
+          ${MARKER}
+          ## Environment Status
 
-          | Branch | Commit | Updated (UTC) |
-          |--------|--------|---------------|
-          | \`$topic\` | \`$commit_sha\` | $timestamp |"
+          | Env | Branch | Commit | Updated (UTC) |
+          |-----|--------|--------|---------------|
+          | ${env_list} | \`$topic\` | \`$commit_sha\` | $timestamp |
+          EOF
+          )
+
+              if [ -n "$comment_id" ]; then
+                # Update existing comment
+                gh api "repos/${{ github.repository }}/issues/comments/${comment_id}" \
+                  -X PATCH -f body="$comment_body"
+              else
+                # Create new comment
+                gh pr comment "$pr_number" --body "$comment_body"
               fi
             fi
           done
